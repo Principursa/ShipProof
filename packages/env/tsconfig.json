@@ -1,0 +1,3 @@
+{
+  "extends": "@ShipProof/config/tsconfig.base.json"
+}
