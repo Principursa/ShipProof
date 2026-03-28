@@ -45,7 +45,7 @@ describe("Attestation pipeline", () => {
     const metrics = await collectMetrics(sessions, window);
 
     expect(metrics).toHaveLength(2);
-    expect(metrics[0].key).toBe("test_a");
-    expect(metrics[1].key).toBe("test_b");
+    expect(metrics[0]!.key).toBe("test_a");
+    expect(metrics[1]!.key).toBe("test_b");
   });
 });

@@ -25,9 +25,9 @@ describe("Auth routes", () => {
     app.route("/auth", createAuthRouter("http://localhost:3001", "a]veryverylongsecretthatis32chars!!"));
     const res = await app.request("/auth/providers");
     expect(res.status).toBe(200);
-    const data = await res.json();
+    const data = (await res.json()) as Array<{ id: string }>;
     expect(Array.isArray(data)).toBe(true);
-    const ids = data.map((p: any) => p.id);
+    const ids = data.map((p) => p.id);
     expect(ids).toContain("mock");
   });
 });

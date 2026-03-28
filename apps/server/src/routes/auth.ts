@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { getProvider, getAllProviders } from "../providers/registry";
-import { sessionMiddleware, getSession, setProviderSession } from "../session";
+import { sessionMiddleware, getSession, setProviderSession, type SessionEnv } from "../session";
 import { randomBytes } from "crypto";
 
 export function createAuthRouter(baseUrl: string, sessionSecret: string) {
-  const auth = new Hono();
+  const auth = new Hono<SessionEnv>();
 
   auth.use("/*", sessionMiddleware(sessionSecret));
 

@@ -99,7 +99,7 @@ describe("XProvider", () => {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-      }) as typeof globalThis.fetch;
+      }) as any;
     });
 
     it("returns a ProviderResult with providerId 'x'", async () => {
@@ -160,7 +160,7 @@ describe("XProvider", () => {
           });
         }
         return new Response(JSON.stringify(tweetsResponse), { status: 200 });
-      }) as typeof globalThis.fetch;
+      }) as any;
 
       await provider.fetchMetrics(TOKENS, userId, window);
       expect(callCount).toBe(2);
