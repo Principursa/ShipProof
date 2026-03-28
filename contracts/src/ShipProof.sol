@@ -122,9 +122,13 @@ contract ShipProof is Ownable, EIP712 {
         if (meta.metricCount < 1 || meta.metricCount > MAX_METRICS) revert InvalidMetricCount();
         if (configs.length != meta.metricCount || encInputs.length != meta.metricCount) revert ArrayLengthMismatch();
 
-        // Validate configs
+        // Validate configs and total weight
+        uint32 totalWeight = 0;
         for (uint8 i = 0; i < meta.metricCount; i++) {
             if (configs[i].cap == 0 || configs[i].weight == 0) revert InvalidConfig();
+            uint32 prev = totalWeight;
+            totalWeight += configs[i].weight;
+            if (totalWeight < prev) revert InvalidConfig(); // overflow
         }
 
         // Verify oracle signature
@@ -155,8 +159,8 @@ contract ShipProof is Ownable, EIP712 {
         if (nonceUsed[nonceKey]) revert NonceAlreadyUsed();
         if (block.timestamp >= meta.expiresAt) revert AttestationExpired();
 
-        // Generate attestation ID
-        attestationId = keccak256(abi.encodePacked(meta.identityHash, meta.oracleNonce));
+        // Generate attestation ID (signer-scoped to prevent cross-oracle collisions)
+        attestationId = keccak256(abi.encodePacked(meta.identityHash, signer, meta.oracleNonce));
 
         // Store attestation
         attestations[attestationId] = meta;
