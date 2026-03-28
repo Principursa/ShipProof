@@ -1,0 +1,12 @@
+[profile.default]
+src = "contracts/src"
+out = "contracts/out"
+test = "contracts/test"
+script = "contracts/script"
+isolate = true
+remappings = [
+  "@fhenixprotocol/cofhe-contracts/=lib/cofhe-contracts/contracts/",
+  "@fhenixprotocol/cofhe-mock-contracts/=lib/cofhe-mock-contracts/contracts/",
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"
+]
+libs = ["node_modules", "lib"]
