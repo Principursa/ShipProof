@@ -36,6 +36,7 @@
   "devDependencies": {
     "@ShipProof/config": "workspace:*",
     "@types/bun": "catalog:",
+    "hardhat": "^3.2.0",
     "turbo": "^2.8.12",
     "typescript": "^5"
   },
