@@ -179,6 +179,69 @@ contract ShipProof is Ownable, EIP712 {
         emit Attested(attestationId, meta.wallet, meta.metricCount, meta.metricsVersion, meta.scoringVersion);
     }
 
+    function computeScore(bytes32 attestationId) external returns (euint32) {
+        _requireState(attestationId, AttestationState.Submitted);
+        if (msg.sender != attestations[attestationId].wallet) revert NotWallet();
+
+        AttestationMeta storage meta = attestations[attestationId];
+        uint8 n = meta.metricCount;
+
+        euint32 score = ENC_ZERO;
+
+        for (uint8 i = 0; i < n; i++) {
+            MetricConfig storage cfg = metricConfigs[attestationId][i];
+            euint32 raw = encMetrics[attestationId][i];
+
+            // Normalize: min(raw, cap) * SCALE / cap
+            euint32 encCap = FHE.asEuint32(cfg.cap);
+            euint32 capped = FHE.min(raw, encCap);
+            euint32 scaled = FHE.mul(capped, ENC_SCALE);
+            euint32 normalized = FHE.div(scaled, encCap);
+
+            // Weight and accumulate
+            euint32 encWeight = FHE.asEuint32(cfg.weight);
+            euint32 weighted = FHE.mul(normalized, encWeight);
+            score = FHE.add(score, weighted);
+        }
+
+        // Divide by total weight to get score in [0, 10000]
+        uint32 totalWeight = 0;
+        for (uint8 i = 0; i < n; i++) {
+            totalWeight += metricConfigs[attestationId][i].weight;
+        }
+        euint32 encTotalWeight = FHE.asEuint32(totalWeight);
+        score = FHE.div(score, encTotalWeight);
+
+        encScores[attestationId] = score;
+        FHE.allowThis(score);
+        FHE.allow(score, meta.wallet);
+
+        attestationState[attestationId] = AttestationState.ScoreComputed;
+        emit ScoreComputed(attestationId);
+        return score;
+    }
+
+    function computePass(bytes32 attestationId) external returns (ebool) {
+        _requireState(attestationId, AttestationState.ScoreComputed);
+        if (msg.sender != attestations[attestationId].wallet) revert NotWallet();
+
+        euint32 score = encScores[attestationId];
+        ebool passed = FHE.gte(score, ENC_THRESHOLD);
+
+        encPassed[attestationId] = passed;
+        FHE.allowThis(passed);
+        FHE.allow(passed, attestations[attestationId].wallet);
+
+        attestationState[attestationId] = AttestationState.PassComputed;
+        emit PassComputed(attestationId);
+        return passed;
+    }
+
+    function _requireState(bytes32 attestationId, AttestationState expected) internal view {
+        AttestationState actual = attestationState[attestationId];
+        if (actual != expected) revert WrongState(expected, actual);
+    }
+
     function _hashConfigs(MetricConfig[] calldata configs, uint8 count) internal pure returns (bytes32) {
         bytes memory packed;
         for (uint8 i = 0; i < count; i++) {
