@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {ShipProofTestHelper} from "./ShipProofTestHelper.sol";
 import {ShipProof, AttestationMeta, MetricConfig, MAX_METRICS} from "../src/ShipProof.sol";
-import {FHE, InEuint32, euint32} from "@fhenixprotocol/cofhe-contracts/FHE.sol";
+import {FHE, InEuint32, euint32, euint8, ebool} from "@fhenixprotocol/cofhe-contracts/FHE.sol";
 
 contract ShipProofTest is ShipProofTestHelper {
     address alice = address(0xA11CE);
@@ -201,5 +201,128 @@ contract ShipProofTest is ShipProofTestHelper {
         vm.prank(alice);
         sp.computePass(id);
         assertTrue(sp.attestationState(id) == ShipProof.AttestationState.PassComputed);
+    }
+
+    // --- Decryption & Badge ---
+
+    function test_requestDecryption_and_mintBadge() public {
+        // 75/100 = 7500 score, threshold 4000 → pass
+        bytes32 id = _submitAttestation(alice, 1, 75, 100, 10000, 1);
+
+        vm.startPrank(alice);
+        sp.computeScore(id);
+        sp.computePass(id);
+        sp.requestPassDecryption(id);
+        vm.stopPrank();
+
+        // Advance past mock async decryption delay
+        vm.warp(block.timestamp + 11);
+
+        vm.prank(alice);
+        sp.mintBadge(id);
+
+        assertTrue(sp.badgeMinted(id));
+        assertTrue(sp.attestationState(id) == ShipProof.AttestationState.BadgeMinted);
+        assertEq(spBadge.ownerOf(0), alice);
+    }
+
+    function test_mintBadge_revert_belowThreshold() public {
+        // 10/100 = 1000 score, threshold 4000 → fail
+        bytes32 id = _submitAttestation(alice, 1, 10, 100, 10000, 1);
+
+        vm.startPrank(alice);
+        sp.computeScore(id);
+        sp.computePass(id);
+        sp.requestPassDecryption(id);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 11);
+
+        vm.prank(alice);
+        vm.expectRevert(ShipProof.ScoreBelowThreshold.selector);
+        sp.mintBadge(id);
+    }
+
+    function test_mintBadge_revert_alreadyMinted() public {
+        bytes32 id = _submitAttestation(alice, 1, 75, 100, 10000, 1);
+        vm.startPrank(alice);
+        sp.computeScore(id);
+        sp.computePass(id);
+        sp.requestPassDecryption(id);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 11);
+
+        vm.prank(alice);
+        sp.mintBadge(id);
+
+        // State is now BadgeMinted, so _requireState(DecryptRequested) will fail
+        vm.prank(alice);
+        vm.expectRevert();
+        sp.mintBadge(id);
+    }
+
+    // --- Tier ---
+
+    function test_computeTier_low() public {
+        // 10/100 = 1000 → tier 0
+        bytes32 id = _submitAttestation(alice, 1, 10, 100, 10000, 1);
+        vm.prank(alice);
+        sp.computeScore(id);
+        vm.prank(alice);
+        sp.computeTier(id);
+
+        euint8 tier = sp.getEncTier(id);
+        assertHashValue(tier, 0);
+    }
+
+    function test_computeTier_high() public {
+        // 80/100 = 8000 → tier 3
+        bytes32 id = _submitAttestation(alice, 1, 80, 100, 10000, 1);
+        vm.prank(alice);
+        sp.computeScore(id);
+        vm.prank(alice);
+        sp.computeTier(id);
+
+        euint8 tier = sp.getEncTier(id);
+        assertHashValue(tier, 3);
+    }
+
+    // --- Selective Disclosure ---
+
+    function test_grantScoreAccess() public {
+        bytes32 id = _submitAttestation(alice, 1, 50, 100, 10000, 1);
+        vm.prank(alice);
+        sp.computeScore(id);
+
+        vm.prank(alice);
+        sp.grantScoreAccess(id, bob);
+        assertTrue(FHE.isAllowed(sp.getEncScore(id), bob));
+    }
+
+    function test_grantMetricAccess() public {
+        bytes32 id = _submitAttestation(alice, 2, 50, 100, 10000, 1);
+
+        vm.prank(alice);
+        sp.grantMetricAccess(id, 0, bob);
+        assertTrue(FHE.isAllowed(sp.getEncMetric(id, 0), bob));
+    }
+
+    function test_grantMetricAccess_revert_invalidSlot() public {
+        bytes32 id = _submitAttestation(alice, 2, 50, 100, 10000, 1);
+
+        vm.prank(alice);
+        vm.expectRevert(ShipProof.InvalidSlot.selector);
+        sp.grantMetricAccess(id, 5, bob);
+    }
+
+    function test_grantAccess_revert_notOwner() public {
+        bytes32 id = _submitAttestation(alice, 1, 50, 100, 10000, 1);
+        vm.prank(alice);
+        sp.computeScore(id);
+
+        vm.prank(bob);
+        vm.expectRevert(ShipProof.NotWallet.selector);
+        sp.grantScoreAccess(id, bob);
     }
 }

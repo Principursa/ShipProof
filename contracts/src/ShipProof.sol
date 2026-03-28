@@ -237,6 +237,71 @@ contract ShipProof is Ownable, EIP712 {
         return passed;
     }
 
+    function requestPassDecryption(bytes32 attestationId) external {
+        _requireState(attestationId, AttestationState.PassComputed);
+        if (msg.sender != attestations[attestationId].wallet) revert NotWallet();
+
+        ebool passed = encPassed[attestationId];
+        FHE.decrypt(passed);
+
+        attestationState[attestationId] = AttestationState.DecryptRequested;
+        emit DecryptionRequested(attestationId);
+    }
+
+    function mintBadge(bytes32 attestationId) external {
+        _requireState(attestationId, AttestationState.DecryptRequested);
+        if (badgeMinted[attestationId]) revert AlreadyMinted();
+
+        address wallet = attestations[attestationId].wallet;
+        ebool passed = encPassed[attestationId];
+        (bool passedPlain, bool decrypted) = FHE.getDecryptResultSafe(passed);
+        if (!decrypted) revert DecryptionNotReady();
+        if (!passedPlain) revert ScoreBelowThreshold();
+
+        badgeMinted[attestationId] = true;
+        attestationState[attestationId] = AttestationState.BadgeMinted;
+        badge.mint(wallet, attestationId);
+        emit BadgeMinted(attestationId, wallet, 1);
+    }
+
+    function computeTier(bytes32 attestationId) external returns (euint8) {
+        if (attestationState[attestationId] < AttestationState.ScoreComputed) {
+            revert WrongState(AttestationState.ScoreComputed, attestationState[attestationId]);
+        }
+        if (msg.sender != attestations[attestationId].wallet) revert NotWallet();
+
+        euint32 score = encScores[attestationId];
+
+        ebool gte25 = FHE.gte(score, FHE.asEuint32(2500));
+        ebool gte50 = FHE.gte(score, FHE.asEuint32(5000));
+        ebool gte75 = FHE.gte(score, FHE.asEuint32(7500));
+
+        euint8 tier = FHE.asEuint8(0);
+        tier = FHE.select(gte25, FHE.asEuint8(1), tier);
+        tier = FHE.select(gte50, FHE.asEuint8(2), tier);
+        tier = FHE.select(gte75, FHE.asEuint8(3), tier);
+
+        encTiers[attestationId] = tier;
+        FHE.allowThis(tier);
+        FHE.allow(tier, attestations[attestationId].wallet);
+
+        emit TierComputed(attestationId);
+        return tier;
+    }
+
+    function grantScoreAccess(bytes32 attestationId, address grantee) external {
+        if (msg.sender != attestations[attestationId].wallet) revert NotWallet();
+        FHE.allow(encScores[attestationId], grantee);
+        emit ScoreAccessGranted(attestationId, grantee);
+    }
+
+    function grantMetricAccess(bytes32 attestationId, uint8 slotIndex, address grantee) external {
+        if (msg.sender != attestations[attestationId].wallet) revert NotWallet();
+        if (slotIndex >= attestations[attestationId].metricCount) revert InvalidSlot();
+        FHE.allow(encMetrics[attestationId][slotIndex], grantee);
+        emit MetricAccessGranted(attestationId, slotIndex, grantee);
+    }
+
     function _requireState(bytes32 attestationId, AttestationState expected) internal view {
         AttestationState actual = attestationState[attestationId];
         if (actual != expected) revert WrongState(expected, actual);
