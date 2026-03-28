@@ -325,4 +325,66 @@ contract ShipProofTest is ShipProofTestHelper {
         vm.expectRevert(ShipProof.NotWallet.selector);
         sp.grantScoreAccess(id, bob);
     }
+
+    // --- Gas Profiling ---
+
+    function test_gasProfile_submit_1metric() public {
+        _submitAttestation(alice, 1, 50, 100, 10000, 1);
+    }
+
+    function test_gasProfile_submit_5metrics() public {
+        _submitAttestation(alice, 5, 50, 100, 2000, 1);
+    }
+
+    function test_gasProfile_submit_8metrics() public {
+        _submitAttestation(alice, 8, 50, 100, 1250, 1);
+    }
+
+    function test_gasProfile_submit_16metrics() public {
+        _submitAttestation(alice, 16, 50, 100, 625, 1);
+    }
+
+    function test_gasProfile_computeScore_1metric() public {
+        bytes32 id = _submitAttestation(alice, 1, 50, 100, 10000, 1);
+        vm.prank(alice);
+        sp.computeScore(id);
+    }
+
+    function test_gasProfile_computeScore_5metrics() public {
+        bytes32 id = _submitAttestation(alice, 5, 50, 100, 2000, 1);
+        vm.prank(alice);
+        sp.computeScore(id);
+    }
+
+    function test_gasProfile_computeScore_8metrics() public {
+        bytes32 id = _submitAttestation(alice, 8, 50, 100, 1250, 1);
+        vm.prank(alice);
+        sp.computeScore(id);
+    }
+
+    function test_gasProfile_computeScore_16metrics() public {
+        bytes32 id = _submitAttestation(alice, 16, 50, 100, 625, 1);
+        vm.prank(alice);
+        sp.computeScore(id);
+    }
+
+    function test_gasProfile_computePass() public {
+        bytes32 id = _submitAttestation(alice, 1, 50, 100, 10000, 1);
+        vm.prank(alice);
+        sp.computeScore(id);
+        vm.prank(alice);
+        sp.computePass(id);
+    }
+
+    function test_gasProfile_decryptAndMint() public {
+        bytes32 id = _submitAttestation(alice, 1, 75, 100, 10000, 1);
+        vm.startPrank(alice);
+        sp.computeScore(id);
+        sp.computePass(id);
+        sp.requestPassDecryption(id);
+        vm.stopPrank();
+        vm.warp(block.timestamp + 11);
+        vm.prank(alice);
+        sp.mintBadge(id);
+    }
 }
