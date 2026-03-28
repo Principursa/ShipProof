@@ -111,14 +111,88 @@ contract ShipProof is Ownable, EIP712 {
         FHE.allowThis(ENC_THRESHOLD);
     }
 
-    // --- Stub (implemented in Task 4) ---
+    // --- Core ---
     function submitAttestation(
         AttestationMeta calldata meta,
         MetricConfig[] calldata configs,
         InEuint32[] calldata encInputs,
         bytes calldata oracleSig
     ) external returns (bytes32 attestationId) {
-        revert("not implemented");
+        if (msg.sender != meta.wallet) revert NotWallet();
+        if (meta.metricCount < 1 || meta.metricCount > MAX_METRICS) revert InvalidMetricCount();
+        if (configs.length != meta.metricCount || encInputs.length != meta.metricCount) revert ArrayLengthMismatch();
+
+        // Validate configs
+        for (uint8 i = 0; i < meta.metricCount; i++) {
+            if (configs[i].cap == 0 || configs[i].weight == 0) revert InvalidConfig();
+        }
+
+        // Verify oracle signature
+        bytes32 configHash = _hashConfigs(configs, meta.metricCount);
+        bytes32 ctInputsHash = _hashCtInputs(encInputs, meta.metricCount);
+
+        bytes32 structHash = keccak256(abi.encode(
+            ATTESTATION_TYPEHASH,
+            meta.identityHash,
+            meta.fromTs,
+            meta.toTs,
+            meta.metricCount,
+            meta.metricsVersion,
+            meta.scoringVersion,
+            meta.wallet,
+            meta.oracleNonce,
+            meta.expiresAt,
+            configHash,
+            ctInputsHash
+        ));
+
+        bytes32 digest = _hashTypedDataV4(structHash);
+        address signer = ECDSA.recover(digest, oracleSig);
+        if (!isOracle[signer]) revert InvalidSignature();
+
+        // Check nonce (signer-scoped)
+        bytes32 nonceKey = keccak256(abi.encodePacked(signer, meta.oracleNonce));
+        if (nonceUsed[nonceKey]) revert NonceAlreadyUsed();
+        if (block.timestamp >= meta.expiresAt) revert AttestationExpired();
+
+        // Generate attestation ID
+        attestationId = keccak256(abi.encodePacked(meta.identityHash, meta.oracleNonce));
+
+        // Store attestation
+        attestations[attestationId] = meta;
+        attestationState[attestationId] = AttestationState.Submitted;
+
+        for (uint8 i = 0; i < meta.metricCount; i++) {
+            euint32 enc = FHE.asEuint32(encInputs[i]);
+            FHE.allowThis(enc);
+            FHE.allow(enc, meta.wallet);
+            encMetrics[attestationId][i] = enc;
+            metricConfigs[attestationId][i] = configs[i];
+        }
+
+        // Mark nonce used
+        nonceUsed[nonceKey] = true;
+
+        // Update identity mapping (superseding model)
+        identityAttestation[meta.identityHash] = attestationId;
+
+        emit Attested(attestationId, meta.wallet, meta.metricCount, meta.metricsVersion, meta.scoringVersion);
+    }
+
+    function _hashConfigs(MetricConfig[] calldata configs, uint8 count) internal pure returns (bytes32) {
+        bytes memory packed;
+        for (uint8 i = 0; i < count; i++) {
+            packed = abi.encodePacked(packed, abi.encode(configs[i].cap, configs[i].weight));
+        }
+        return keccak256(packed);
+    }
+
+    function _hashCtInputs(InEuint32[] calldata inputs, uint8 count) internal pure returns (bytes32) {
+        bytes memory packed;
+        for (uint8 i = 0; i < count; i++) {
+            packed = abi.encodePacked(packed, abi.encode(inputs[i]));
+        }
+        return keccak256(packed);
     }
 
     // --- View helpers for tests ---
