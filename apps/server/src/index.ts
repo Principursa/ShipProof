@@ -43,4 +43,24 @@ app.route("/attest", createAttestRouter(
 // Health check
 app.get("/health", (c) => c.json({ status: "ok" }));
 
+// Initialize cofhejs for server-side encryption (required before /attest works)
+if (env.ARB_SEPOLIA_RPC_URL) {
+  import("cofhejs/node").then(async ({ cofhejs }) => {
+    const { createPublicClient, createWalletClient, http } = await import("viem");
+    const { privateKeyToAccount } = await import("viem/accounts");
+    const { arbitrumSepolia } = await import("viem/chains");
+
+    const transport = http(env.ARB_SEPOLIA_RPC_URL);
+    const account = privateKeyToAccount(env.ORACLE_PRIVATE_KEY as `0x${string}`);
+
+    const viemClient = createPublicClient({ chain: arbitrumSepolia, transport });
+    const viemWalletClient = createWalletClient({ account, chain: arbitrumSepolia, transport });
+
+    await cofhejs.initializeWithViem({ viemClient, viemWalletClient });
+    console.log("cofhejs initialized");
+  }).catch((err) => {
+    console.warn("cofhejs initialization failed (encryption will not work):", err);
+  });
+}
+
 export default app;

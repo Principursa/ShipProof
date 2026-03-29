@@ -38,10 +38,10 @@ export interface MetricProvider {
   /** OAuth scopes this provider needs. */
   readonly requiredScopes: string[];
 
-  /** Generate the OAuth authorization URL. */
-  getAuthUrl(state: string, redirectUri: string): string;
-  /** Exchange OAuth callback code for tokens. */
-  exchangeCode(code: string, redirectUri: string): Promise<ProviderTokens>;
+  /** Generate the OAuth authorization URL. May include a PKCE verifier. */
+  getAuthUrl(state: string, redirectUri: string): string | { url: string; pkceVerifier: string };
+  /** Exchange OAuth callback code for tokens. PKCE verifier is passed for PKCE flows. */
+  exchangeCode(code: string, redirectUri: string, pkceVerifier?: string): Promise<ProviderTokens>;
   /** Fetch the authenticated user's provider-specific ID. */
   getUserId(tokens: ProviderTokens): Promise<string>;
   /** Fetch metrics for the given user over the time window. */

@@ -130,8 +130,8 @@ export class GitHubProvider implements MetricProvider {
       throw new Error(`GitHub user fetch failed: ${res.status}`);
     }
 
-    const data = (await res.json()) as { login: string };
-    return data.login;
+    const data = (await res.json()) as { id: number; login: string };
+    return String(data.id);
   }
 
   async fetchMetrics(
@@ -139,6 +139,19 @@ export class GitHubProvider implements MetricProvider {
     userId: string,
     window: { from: Date; to: Date },
   ): Promise<ProviderResult> {
+    // userId is the numeric account ID; we need the login for the GraphQL query
+    const userRes = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${tokens.accessToken}`,
+        Accept: "application/vnd.github+json",
+      },
+    });
+    if (!userRes.ok) {
+      throw new Error(`GitHub user fetch failed: ${userRes.status}`);
+    }
+    const userData = (await userRes.json()) as { login: string };
+    const login = userData.login;
+
     const res = await fetch("https://api.github.com/graphql", {
       method: "POST",
       headers: {
@@ -148,7 +161,7 @@ export class GitHubProvider implements MetricProvider {
       body: JSON.stringify({
         query: CONTRIBUTIONS_QUERY,
         variables: {
-          login: userId,
+          login,
           from: window.from.toISOString(),
           to: window.to.toISOString(),
         },

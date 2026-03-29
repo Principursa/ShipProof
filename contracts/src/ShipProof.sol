@@ -254,6 +254,7 @@ contract ShipProof is Ownable, EIP712 {
 
     function mintBadge(bytes32 attestationId) external {
         _requireState(attestationId, AttestationState.DecryptRequested);
+        if (msg.sender != attestations[attestationId].wallet) revert NotWallet();
         if (badgeMinted[attestationId]) revert AlreadyMinted();
 
         address wallet = attestations[attestationId].wallet;

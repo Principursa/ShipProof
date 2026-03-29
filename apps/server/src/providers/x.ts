@@ -6,8 +6,6 @@ import type {
   RawMetric,
 } from "./types";
 
-const PKCE_STORE = new Map<string, string>();
-
 const SHIP_REGEX =
   /shipped|launching|released|just deployed|open.?sourced/i;
 const GITHUB_URL_RE = /https?:\/\/github\.com\//i;
@@ -30,9 +28,8 @@ export class XProvider implements MetricProvider {
     this.clientSecret = clientSecret;
   }
 
-  getAuthUrl(state: string, redirectUri: string): string {
+  getAuthUrl(state: string, redirectUri: string): { url: string; pkceVerifier: string } {
     const verifier = randomBytes(32).toString("base64url");
-    PKCE_STORE.set(state, verifier);
 
     const challenge = createHash("sha256")
       .update(verifier)
@@ -48,16 +45,18 @@ export class XProvider implements MetricProvider {
       code_challenge_method: "S256",
     });
 
-    return `https://x.com/i/oauth2/authorize?${params.toString()}`;
+    return {
+      url: `https://x.com/i/oauth2/authorize?${params.toString()}`,
+      pkceVerifier: verifier,
+    };
   }
 
   async exchangeCode(
     code: string,
     redirectUri: string,
-    state?: string,
+    pkceVerifier?: string,
   ): Promise<ProviderTokens> {
-    const verifier = state ? PKCE_STORE.get(state) : undefined;
-    if (state) PKCE_STORE.delete(state);
+    const verifier = pkceVerifier;
 
     const body = new URLSearchParams({
       grant_type: "authorization_code",

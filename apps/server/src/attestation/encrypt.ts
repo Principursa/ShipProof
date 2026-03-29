@@ -1,4 +1,4 @@
-import { keccak256, encodeAbiParameters, parseAbiParameters } from "viem";
+import { keccak256, encodeAbiParameters, concatHex } from "viem";
 
 /**
  * Compute metricsVersion from sorted metric keys.
@@ -6,23 +6,61 @@ import { keccak256, encodeAbiParameters, parseAbiParameters } from "viem";
  */
 export function computeSchemaVersion(keys: string[]): number {
   const hash = keccak256(
-    encodeAbiParameters(parseAbiParameters("string"), [keys.sort().join(",")]),
+    encodeAbiParameters([{ type: "string" }], [keys.sort().join(",")]),
   );
   return parseInt(hash.slice(0, 10), 16); // "0x" + 8 hex chars = 4 bytes
 }
 
 /**
- * Encrypt metric values using cofhejs.
- * Returns the encrypted inputs and a hash of the raw ciphertext inputs
- * (for inclusion in the EIP-712 signature).
+ * Hash encrypted inputs to match the contract's _hashCtInputs.
  *
- * NOTE: cofhejs requires initialization with a provider and signer
- * before calling encrypt(). The pipeline must call cofhejs.initialize()
- * once at server startup.
+ * The contract does:
+ *   for each input: packed = abi.encodePacked(packed, abi.encode(inputs[i]))
+ *   return keccak256(packed)
+ *
+ * InEuint32 is: { uint256 ctHash, uint8 securityZone, uint8 utype, bytes signature }
+ * abi.encode of a struct with dynamic `bytes` produces ABI-encoded tuple.
+ */
+export function hashCtInputs(encryptedInputs: InEuint32Like[]): `0x${string}` {
+  if (encryptedInputs.length === 0) return keccak256("0x");
+
+  const encodedParts = encryptedInputs.map((inp) =>
+    encodeAbiParameters(
+      [
+        { type: "uint256" },
+        { type: "uint8" },
+        { type: "uint8" },
+        { type: "bytes" },
+      ],
+      [
+        BigInt(inp.ctHash),
+        inp.securityZone,
+        inp.utype,
+        inp.signature as `0x${string}`,
+      ],
+    ),
+  );
+
+  return keccak256(concatHex(encodedParts));
+}
+
+/** Shape of cofhejs InEuint32 output */
+export interface InEuint32Like {
+  ctHash: string | bigint;
+  securityZone: number;
+  utype: number;
+  signature: string;
+}
+
+/**
+ * Encrypt metric values using cofhejs.
+ * Returns the encrypted inputs and a hash matching the contract's _hashCtInputs.
+ *
+ * IMPORTANT: cofhejs.initialize() must be called before this function.
  */
 export async function encryptMetrics(
   values: number[],
-): Promise<{ encryptedInputs: unknown[]; ctInputsHash: `0x${string}` }> {
+): Promise<{ encryptedInputs: InEuint32Like[]; ctInputsHash: `0x${string}` }> {
   const { cofhejs, Encryptable } = await import("cofhejs/node");
 
   const result = await cofhejs.encrypt(
@@ -33,15 +71,8 @@ export async function encryptMetrics(
     throw new Error(`CoFHE encryption failed: ${(result as any).error}`);
   }
 
-  const encryptedInputs = result.data as unknown[];
-
-  // Hash the encrypted inputs for the EIP-712 signature
-  // Serialize each input to bytes and hash
-  const serialized = encryptedInputs.map((inp) =>
-    Buffer.from(JSON.stringify(inp)),
-  );
-  const concatenated = Buffer.concat(serialized);
-  const ctInputsHash = keccak256(`0x${concatenated.toString("hex")}` as `0x${string}`);
+  const encryptedInputs = result.data as unknown as InEuint32Like[];
+  const ctInputsHash = hashCtInputs(encryptedInputs);
 
   return { encryptedInputs, ctInputsHash };
 }

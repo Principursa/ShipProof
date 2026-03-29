@@ -14,6 +14,7 @@ export interface UserSession {
     linkedAt: number;
   };
   csrfToken?: string;
+  pkceVerifier?: string;
 }
 
 // Hono env type for typed c.set/c.get

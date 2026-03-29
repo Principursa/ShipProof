@@ -1,4 +1,5 @@
 import { keccak256, encodePacked } from "viem";
+import { randomBytes } from "crypto";
 import { getProvider } from "../providers/registry";
 import type { ProviderSession } from "../session";
 import type { RawMetric } from "../providers/types";
@@ -8,7 +9,10 @@ import { signAttestation, type AttestationMeta } from "./sign";
 const CURRENT_SCORING_VERSION = 1;
 const ENVELOPE_TTL = 300; // 5 minutes
 
-let nonceCounter = 0;
+/** Generate a unique nonce using crypto randomness (survives restarts + multi-instance). */
+function generateNonce(): bigint {
+  return BigInt(`0x${randomBytes(8).toString("hex")}`);
+}
 
 export function buildIdentityHash(
   salt: string,
@@ -85,7 +89,7 @@ export async function buildAttestation(
     metricsVersion,
     scoringVersion: CURRENT_SCORING_VERSION,
     wallet,
-    oracleNonce: BigInt(++nonceCounter),
+    oracleNonce: generateNonce(),
     expiresAt: BigInt(now + ENVELOPE_TTL),
   };
 

@@ -25,36 +25,37 @@ describe("XProvider", () => {
   });
 
   describe("getAuthUrl", () => {
-    it("returns a URL pointing to X OAuth2 authorize endpoint", () => {
-      const url = provider.getAuthUrl("state123", "https://example.com/cb");
-      expect(url).toStartWith("https://x.com/i/oauth2/authorize?");
+    it("returns an object with url pointing to X OAuth2 authorize endpoint", () => {
+      const result = provider.getAuthUrl("state123", "https://example.com/cb");
+      expect(result.url).toStartWith("https://x.com/i/oauth2/authorize?");
+      expect(result.pkceVerifier).toBeTruthy();
     });
 
     it("includes response_type=code", () => {
-      const url = provider.getAuthUrl("state-abc", "https://example.com/cb");
-      const params = new URL(url).searchParams;
+      const result = provider.getAuthUrl("state-abc", "https://example.com/cb");
+      const params = new URL(result.url).searchParams;
       expect(params.get("response_type")).toBe("code");
     });
 
     it("includes PKCE code_challenge", () => {
-      const url = provider.getAuthUrl("state-pkce", "https://example.com/cb");
-      const params = new URL(url).searchParams;
+      const result = provider.getAuthUrl("state-pkce", "https://example.com/cb");
+      const params = new URL(result.url).searchParams;
       expect(params.get("code_challenge")).toBeTruthy();
       expect(params.get("code_challenge_method")).toBe("S256");
     });
 
     it("includes the provided state", () => {
       const state = "unique-state-xyz";
-      const url = provider.getAuthUrl(state, "https://example.com/cb");
-      const params = new URL(url).searchParams;
+      const result = provider.getAuthUrl(state, "https://example.com/cb");
+      const params = new URL(result.url).searchParams;
       expect(params.get("state")).toBe(state);
     });
 
     it("generates a different code_challenge for each call", () => {
-      const url1 = provider.getAuthUrl("s1", "https://example.com/cb");
-      const url2 = provider.getAuthUrl("s2", "https://example.com/cb");
-      const challenge1 = new URL(url1).searchParams.get("code_challenge");
-      const challenge2 = new URL(url2).searchParams.get("code_challenge");
+      const result1 = provider.getAuthUrl("s1", "https://example.com/cb");
+      const result2 = provider.getAuthUrl("s2", "https://example.com/cb");
+      const challenge1 = new URL(result1.url).searchParams.get("code_challenge");
+      const challenge2 = new URL(result2.url).searchParams.get("code_challenge");
       expect(challenge1).not.toBe(challenge2);
     });
   });

@@ -26,9 +26,15 @@ export function createAuthRouter(baseUrl: string, sessionSecret: string) {
     const state = randomBytes(16).toString("hex");
     const session = getSession(c);
     session.csrfToken = state;
-    c.set("session", session);
     const redirectUri = `${baseUrl}/auth/${provider.id}/callback`;
-    return c.redirect(provider.getAuthUrl(state, redirectUri));
+    const authResult = provider.getAuthUrl(state, redirectUri);
+    if (typeof authResult === "string") {
+      c.set("session", session);
+      return c.redirect(authResult);
+    }
+    session.pkceVerifier = authResult.pkceVerifier;
+    c.set("session", session);
+    return c.redirect(authResult.url);
   });
 
   // Handle OAuth callback
@@ -46,7 +52,8 @@ export function createAuthRouter(baseUrl: string, sessionSecret: string) {
     }
 
     const redirectUri = `${baseUrl}/auth/${provider.id}/callback`;
-    const tokens = await provider.exchangeCode(code, redirectUri);
+    const tokens = await provider.exchangeCode(code, redirectUri, session.pkceVerifier);
+    delete session.pkceVerifier;
     const userId = await provider.getUserId(tokens);
     setProviderSession(c, provider.id, { tokens, userId });
 

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { sessionMiddleware, getSession } from "../session";
 import { buildAttestation } from "../attestation/pipeline";
+import type { InEuint32Like } from "../attestation/encrypt";
 
 export function createAttestRouter(
   sessionSecret: string,
@@ -57,7 +58,12 @@ export function createAttestRouter(
         expiresAt: envelope.meta.expiresAt.toString(),
       },
       configs: envelope.configs,
-      encryptedInputs: envelope.encryptedInputs,
+      encryptedInputs: (envelope.encryptedInputs as InEuint32Like[]).map((inp) => ({
+        ctHash: inp.ctHash.toString(),
+        securityZone: inp.securityZone,
+        utype: inp.utype,
+        signature: inp.signature,
+      })),
       signature: envelope.signature,
     });
   });
