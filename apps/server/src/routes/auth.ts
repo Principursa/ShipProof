@@ -3,7 +3,7 @@ import { getProvider, getAllProviders } from "../providers/registry";
 import { sessionMiddleware, getSession, setProviderSession, type SessionEnv } from "../session";
 import { randomBytes } from "crypto";
 
-export function createAuthRouter(baseUrl: string, sessionSecret: string) {
+export function createAuthRouter(baseUrl: string, sessionSecret: string, frontendUrl: string) {
   const auth = new Hono<SessionEnv>();
 
   auth.use("/*", sessionMiddleware(sessionSecret));
@@ -57,14 +57,19 @@ export function createAuthRouter(baseUrl: string, sessionSecret: string) {
     const userId = await provider.getUserId(tokens);
     setProviderSession(c, provider.id, { tokens, userId });
 
-    return c.redirect("/auth/status");
+    return c.redirect(`${frontendUrl}/attest`);
   });
 
   // Current session status
   auth.get("/status", (c) => {
     const session = getSession(c);
+    const providers: Record<string, { userId: string }> = {};
+    for (const [id, ps] of Object.entries(session.providers)) {
+      providers[id] = { userId: ps.userId };
+    }
     return c.json({
       connected: Object.keys(session.providers),
+      providers,
       wallet: session.wallet?.address ?? null,
     });
   });

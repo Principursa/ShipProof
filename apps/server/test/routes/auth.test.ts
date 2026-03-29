@@ -22,7 +22,7 @@ describe("Auth routes", () => {
     registerProvider(mockProvider);
     const { createAuthRouter } = await import("../../src/routes/auth");
     const app = new Hono();
-    app.route("/auth", createAuthRouter("http://localhost:3001", "a]veryverylongsecretthatis32chars!!"));
+    app.route("/auth", createAuthRouter("http://localhost:3001", "a]veryverylongsecretthatis32chars!!", "http://localhost:5173"));
     const res = await app.request("/auth/providers");
     expect(res.status).toBe(200);
     const data = (await res.json()) as Array<{ id: string }>;

@@ -30,7 +30,7 @@ app.use(
 );
 
 // Routes
-app.route("/auth", createAuthRouter(env.BASE_URL, env.SESSION_SECRET));
+app.route("/auth", createAuthRouter(env.BASE_URL, env.SESSION_SECRET, env.CORS_ORIGIN));
 app.route("/auth", createWalletRouter(env.SESSION_SECRET));
 app.route("/attest", createAttestRouter(
   env.SESSION_SECRET,
