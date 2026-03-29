@@ -44,8 +44,27 @@ lerna-debug.log*
 coverage
 .nyc_output
 
+# Foundry
+contracts/out/
+contracts/cache/
+cache/
+broadcast/
+keystore/
+
+# Nix
+result
+.direnv/
+
 # Misc
 *.tgz
 .cache
 tmp
 temp
+.gstack/
+keystore/
+
+# MD files
+HACKATHON_DESCRIPTION.md 
+DEVELOPMENT_SPEC.md 
+CLAUDE.md
+

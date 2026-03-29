@@ -1,0 +1,20 @@
+{
+  "lib/cofhe-contracts": {
+    "tag": {
+      "name": "v0.0.13",
+      "rev": "d41a6279600cf8c34878d0195488cfcfcee41bdc"
+    }
+  },
+  "lib/cofhe-mock-contracts": {
+    "tag": {
+      "name": "v0.3.0",
+      "rev": "355d315524bf4de4e15a87fb3bb0246f98fc0c42"
+    }
+  },
+  "lib/openzeppelin-contracts": {
+    "tag": {
+      "name": "v5.6.1",
+      "rev": "5fd1781b1454fd1ef8e722282f86f9293cacf256"
+    }
+  }
+}

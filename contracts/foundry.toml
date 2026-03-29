@@ -1,0 +1,19 @@
+[profile.default]
+src = "src"
+out = "out"
+test = "test"
+script = "script"
+isolate = true
+via_ir = true
+remappings = [
+  "@fhenixprotocol/cofhe-contracts/=../lib/cofhe-contracts/contracts/",
+  "@fhenixprotocol/cofhe-mock-contracts/=../lib/cofhe-mock-contracts/contracts/",
+  "@openzeppelin/contracts/=../lib/openzeppelin-contracts/contracts/",
+  "forge-std/=../lib/openzeppelin-contracts/lib/forge-std/src/",
+  "hardhat/=../node_modules/.bun/hardhat@3.2.0/node_modules/hardhat/"
+]
+libs = ["../node_modules", "../lib"]
+allow_paths = [".."]
+
+[etherscan]
+arbitrum_sepolia = { key = "${ARBISCAN_API_KEY}", url = "https://api-sepolia.arbiscan.io/api" }
