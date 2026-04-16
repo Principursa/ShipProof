@@ -33,15 +33,18 @@ function AttestPage() {
   const canAttest = isConnected && hasProviders && walletLinked;
 
   return (
-    <div className="mx-auto w-full max-w-xl px-6 py-10">
-      <div className="mb-8">
-        <h1 className="font-mono text-2xl font-bold tracking-tight">Attestation</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+    <div className="mx-auto w-full max-w-xl px-6 py-12 md:py-16">
+      <div className="mb-10 animate-fade-up">
+        <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
+          Builder Verification
+        </p>
+        <h1 className="font-serif text-4xl tracking-tight">Attestation</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Connect, verify, and mint your confidential builder proof.
         </p>
       </div>
 
-      <div className="space-y-5">
+      <div className="stagger-children space-y-4">
         <Step number={1} title="Connect Wallet" done={isConnected}>
           <ConnectWallet />
         </Step>
@@ -65,7 +68,7 @@ function AttestPage() {
           {canAttest ? (
             <AttestationStepper onComplete={(id) => setCompletedAttestationId(id)} />
           ) : (
-            <p className="font-mono text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Complete steps 1–3 to begin.
             </p>
           )}
@@ -73,17 +76,21 @@ function AttestPage() {
       </div>
 
       {completedAttestationId && (
-        <div className="mt-10 space-y-5">
-          <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.2em] text-muted-foreground">
-            <span className="inline-block h-px w-8 bg-border" />
-            Your Proof
-            <span className="inline-block h-px w-8 bg-border" />
+        <div className="mt-14 animate-fade-up">
+          <div className="mb-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
+              Your Proof
+            </span>
+            <div className="h-px flex-1 bg-border" />
           </div>
-          <BadgeDisplay attestationId={completedAttestationId} />
-          <SelectiveDisclosure
-            attestationId={completedAttestationId}
-            metricCount={8}
-          />
+          <div className="space-y-4">
+            <BadgeDisplay attestationId={completedAttestationId} />
+            <SelectiveDisclosure
+              attestationId={completedAttestationId}
+              metricCount={8}
+            />
+          </div>
         </div>
       )}
     </div>
@@ -102,21 +109,26 @@ function Step({
   children: React.ReactNode;
 }) {
   return (
-    <Card className={done ? "border-primary/20 bg-accent/30" : ""}>
+    <Card className={`transition-all duration-300 ${done ? "stamp-border" : ""}`}>
       <CardContent className="p-5">
         <div className="mb-3 flex items-center gap-3">
           <span
-            className={`flex h-6 w-6 items-center justify-center font-mono text-xs font-bold ${
+            className={`flex h-7 w-7 items-center justify-center text-xs font-medium transition-all duration-300 ${
               done
-                ? "bg-primary text-primary-foreground"
+                ? "bg-primary text-primary-foreground animate-stamp"
                 : "border border-border text-muted-foreground"
             }`}
           >
-            {done ? <Check className="h-3.5 w-3.5" /> : number}
+            {done ? <Check className="h-3.5 w-3.5" /> : <span className="font-mono">{number}</span>}
           </span>
-          <span className="font-mono text-xs font-semibold uppercase tracking-wider">
+          <span className="font-mono text-[11px] font-medium uppercase tracking-[0.15em]">
             {title}
           </span>
+          {done && (
+            <span className="ml-auto font-mono text-[9px] uppercase tracking-[0.2em] text-primary/60">
+              Verified
+            </span>
+          )}
         </div>
         {children}
       </CardContent>

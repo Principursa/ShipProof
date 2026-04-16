@@ -22,15 +22,13 @@ export function BadgeDisplay({ attestationId }: BadgeDisplayProps) {
     args: [attestationId],
   });
 
-  if (isLoading) {
-    return <Skeleton className="h-48 w-full" />;
-  }
+  if (isLoading) return <Skeleton className="h-52 w-full" />;
 
   if (!attestation) {
     return (
       <Card>
-        <CardContent className="p-6 text-center">
-          <span className="font-mono text-xs text-muted-foreground">Attestation not found.</span>
+        <CardContent className="p-8 text-center">
+          <span className="text-sm text-muted-foreground">Attestation not found.</span>
         </CardContent>
       </Card>
     );
@@ -45,35 +43,38 @@ export function BadgeDisplay({ attestationId }: BadgeDisplayProps) {
   const truncatedWallet = `${wallet.slice(0, 6)}…${wallet.slice(-4)}`;
 
   return (
-    <Card>
-      <CardContent className="p-5">
-        <div className="mb-4 flex items-center justify-between">
+    <Card className="stamp-border overflow-hidden">
+      <CardContent className="p-0">
+        {/* Header band */}
+        <div className="flex items-center justify-between border-b border-border/50 bg-accent/30 px-5 py-3">
           <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="" className="h-8 w-auto opacity-80" />
-            <span className="font-mono text-sm font-bold tracking-tight">ShipProof Badge</span>
+            <img src="/logo.png" alt="" className="h-7 w-auto" />
+            <span className="font-serif text-base tracking-tight">ShipProof Badge</span>
           </div>
           {isMinted && (
-            <span className="border border-primary/30 bg-accent/50 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-primary">
+            <span className="bg-primary px-2.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.2em] text-primary-foreground">
               Minted
             </span>
           )}
         </div>
 
-        <div className="space-y-2 border-t border-border/60 pt-3">
-          <Row label="Period" value={`${fromDate} — ${toDate}`} />
-          <Row label="Metrics" value={`${metricCount} metrics (v${metricsVersion})`} />
-          <Row label="Wallet" value={truncatedWallet} mono />
+        {/* Data rows */}
+        <div className="divide-y divide-border/30 px-5">
+          <DataRow label="Period" value={`${fromDate} — ${toDate}`} />
+          <DataRow label="Metrics" value={`${metricCount} encrypted (v${metricsVersion})`} />
+          <DataRow label="Wallet" value={truncatedWallet} mono />
+          <DataRow label="Attestation" value={`${attestationId.slice(0, 10)}…${attestationId.slice(-6)}`} mono />
         </div>
       </CardContent>
     </Card>
   );
 }
 
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function DataRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="flex justify-between text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span className={mono ? "font-mono" : ""}>{value}</span>
+    <div className="flex items-center justify-between py-3">
+      <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">{label}</span>
+      <span className={`text-sm ${mono ? "font-mono text-xs" : ""}`}>{value}</span>
     </div>
   );
 }

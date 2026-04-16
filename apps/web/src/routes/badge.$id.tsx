@@ -22,15 +22,18 @@ function BadgePage() {
   const metricCount = attestation ? Number((attestation as unknown as any[])[3]) : 0;
 
   return (
-    <div className="mx-auto w-full max-w-xl px-6 py-10">
-      <div className="mb-8">
-        <h1 className="font-mono text-2xl font-bold tracking-tight">Badge</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          View your attestation proof and manage selective disclosure.
+    <div className="mx-auto w-full max-w-xl px-6 py-12 md:py-16">
+      <div className="mb-10 animate-fade-up">
+        <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
+          On-chain Proof
+        </p>
+        <h1 className="font-serif text-4xl tracking-tight">Badge</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          View your attestation and manage selective disclosure.
         </p>
       </div>
 
-      <div className="space-y-5">
+      <div className="space-y-4 animate-fade-up" style={{ animationDelay: "100ms" }}>
         <BadgeDisplay attestationId={attestationId} />
         {metricCount > 0 && (
           <SelectiveDisclosure

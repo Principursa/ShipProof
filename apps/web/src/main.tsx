@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WagmiProvider, usePublicClient, useWalletClient } from "wagmi";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import ReactDOM from "react-dom/client";
-import { CofheProvider, createCofheConfig, useCofheAutoConnect, FnxFloatingButtonWithProvider } from "@cofhe/react";
+import { CofheProvider, createCofheConfig, useCofheAutoConnect } from "@cofhe/react";
 import { arbSepolia } from "@cofhe/sdk/chains";
 
 import Loader from "./components/loader";
@@ -50,7 +50,6 @@ if (!rootElement.innerHTML) {
         <CofheProvider config={cofheConfig} queryClient={queryClient}>
           <CofheAutoConnector>
             <RouterProvider router={router} />
-            <FnxFloatingButtonWithProvider position="bottom-right" />
           </CofheAutoConnector>
         </CofheProvider>
       </QueryClientProvider>

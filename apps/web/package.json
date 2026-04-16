@@ -13,7 +13,11 @@
   "dependencies": {
     "@ShipProof/env": "workspace:*",
     "@ShipProof/ui": "workspace:*",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
     "@cofhe/abi": "^0.4.0",
+    "@mui/icons-material": "^5.18.0",
+    "@mui/material": "^5.18.0",
     "@cofhe/react": "^0.4.0",
     "@cofhe/sdk": "0.4.0",
     "@hookform/resolvers": "^5.1.1",

@@ -10,12 +10,15 @@ export function ConnectWallet() {
   if (isConnected && address) {
     return (
       <div className="flex items-center gap-2">
-        <span className="border border-border bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
+        <span className="border border-border bg-card px-2.5 py-1 font-mono text-[11px] text-muted-foreground">
           {address.slice(0, 6)}…{address.slice(-4)}
         </span>
-        <Button variant="ghost" size="xs" onClick={() => disconnect()} className="font-mono text-xs">
+        <button
+          onClick={() => disconnect()}
+          className="font-mono text-[10px] text-muted-foreground/50 transition-colors hover:text-foreground"
+        >
           ×
-        </Button>
+        </button>
       </div>
     );
   }
@@ -25,7 +28,7 @@ export function ConnectWallet() {
       size="sm"
       disabled={isPending}
       onClick={() => connect({ connector: injected() })}
-      className="font-mono text-xs uppercase tracking-wider"
+      className="font-mono text-[11px] uppercase tracking-[0.15em]"
     >
       {isPending ? "Connecting…" : "Connect"}
     </Button>

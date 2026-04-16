@@ -20,14 +20,14 @@ export function ProviderConnector() {
   if (loadingProviders || loadingStatus) {
     return (
       <div className="space-y-2">
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-11 w-full" />
+        <Skeleton className="h-11 w-full" />
       </div>
     );
   }
 
   if (!providers || providers.length === 0) {
-    return <p className="font-mono text-xs text-muted-foreground">No providers configured.</p>;
+    return <p className="text-sm text-muted-foreground">No providers configured.</p>;
   }
 
   const connectedIds = status?.connected ?? [];
@@ -39,27 +39,31 @@ export function ProviderConnector() {
         return (
           <div
             key={provider.id}
-            className={`flex items-center justify-between border p-3 transition-colors ${
-              isConnected ? "border-primary/20 bg-accent/30" : "border-border"
+            className={`flex items-center justify-between border p-3 transition-all duration-200 ${
+              isConnected
+                ? "stamp-border border-primary/15 bg-accent/30"
+                : "border-border hover:border-border hover:bg-card"
             }`}
           >
             <div className="flex items-center gap-3">
               {isConnected ? (
-                <Check className="h-4 w-4 text-primary" />
+                <div className="flex h-5 w-5 items-center justify-center bg-primary">
+                  <Check className="h-3 w-3 text-primary-foreground" />
+                </div>
               ) : (
-                <div className="h-4 w-4 border border-muted-foreground/40" />
+                <div className="h-5 w-5 border border-border" />
               )}
-              <span className="font-mono text-xs font-medium">{provider.displayName}</span>
+              <span className="text-sm font-medium">{provider.displayName}</span>
             </div>
             {isConnected ? (
-              <span className="font-mono text-[10px] uppercase tracking-wider text-primary">
+              <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-primary/60">
                 Linked
               </span>
             ) : (
               <Button
                 size="xs"
                 variant="outline"
-                className="font-mono text-[10px] uppercase tracking-wider"
+                className="font-mono text-[10px] uppercase tracking-[0.15em]"
                 onClick={() => {
                   window.location.href = `${env.VITE_SERVER_URL}/auth/${provider.id}`;
                 }}
