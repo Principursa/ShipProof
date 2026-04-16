@@ -1,8 +1,7 @@
 import { useCofheActivePermit, useCofheAllPermits, useCofheSelectPermit, useCofheRemovePermit, useCofheNavigateToCreatePermit, useCofheConnection } from "@cofhe/react";
 import type { Permit } from "@cofhe/sdk/permits";
 import { Button } from "@ShipProof/ui/components/button";
-import { Card, CardContent } from "@ShipProof/ui/components/card";
-import { AlertTriangle, Key, RefreshCw, ShieldCheck } from "lucide-react";
+import { Key, RefreshCw } from "lucide-react";
 
 type PermitGateStatus = "ready" | "missing" | "expired" | "disconnected";
 
@@ -17,16 +16,10 @@ function getPermitStatus(active: { permit: Permit; isValid: boolean } | undefine
 }
 
 interface PermitGateProps {
-  /** Render children only when a valid permit is active */
   children: React.ReactNode;
-  /** What action the permit is needed for (shown in UI) */
   action?: string;
 }
 
-/**
- * Gates decrypt-facing actions behind a valid CoFHE permit.
- * Shows create/select/expired/missing states with clear CTAs.
- */
 export function PermitGate({ children, action = "this action" }: PermitGateProps) {
   const active = useCofheActivePermit();
   const allPermits = useCofheAllPermits();
@@ -42,65 +35,61 @@ export function PermitGate({ children, action = "this action" }: PermitGateProps
   }
 
   return (
-    <Card className="border-dashed">
-      <CardContent className="p-4 space-y-3">
-        {status === "disconnected" && (
-          <div className="flex items-start gap-2 text-muted-foreground">
-            <Key className="h-4 w-4 mt-0.5 shrink-0" />
-            <p className="text-sm">Connect your wallet to manage FHE permits.</p>
+    <div className="border border-dashed border-border p-4 space-y-3">
+      {status === "disconnected" && (
+        <div className="flex items-start gap-2 text-muted-foreground">
+          <Key className="h-4 w-4 mt-0.5 shrink-0" />
+          <p className="font-mono text-xs">Connect your wallet to manage FHE permits.</p>
+        </div>
+      )}
+
+      {status === "missing" && (
+        <>
+          <div className="flex items-start gap-2">
+            <Key className="h-4 w-4 mt-0.5 shrink-0 text-primary/60" />
+            <div>
+              <p className="font-mono text-xs font-medium">Permit required</p>
+              <p className="font-mono text-[10px] text-muted-foreground mt-0.5">
+                A CoFHE permit authorizes decryption of your encrypted data. Required for {action}.
+              </p>
+            </div>
           </div>
-        )}
-
-        {status === "missing" && (
-          <>
-            <div className="flex items-start gap-2">
-              <Key className="h-4 w-4 mt-0.5 shrink-0 text-amber-500" />
-              <div className="text-sm">
-                <p className="font-medium">Permit required</p>
-                <p className="text-muted-foreground">
-                  A CoFHE permit authorizes decryption of your encrypted data. Create one to proceed with {action}.
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button size="sm" onClick={() => navigateToCreate({})}>
-                <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
-                Create Permit
+          <div className="flex gap-2">
+            <Button size="xs" onClick={() => navigateToCreate({})} className="font-mono text-[10px] uppercase tracking-wider">
+              Create Permit
+            </Button>
+            {allPermits.length > 0 && (
+              <Button size="xs" variant="outline" onClick={() => selectPermit(allPermits[0].hash)} className="font-mono text-[10px] uppercase tracking-wider">
+                Use Existing ({allPermits.length})
               </Button>
-              {allPermits.length > 0 && (
-                <Button size="sm" variant="outline" onClick={() => selectPermit(allPermits[0].hash)}>
-                  Use Existing ({allPermits.length})
-                </Button>
-              )}
-            </div>
-          </>
-        )}
+            )}
+          </div>
+        </>
+      )}
 
-        {status === "expired" && (
-          <>
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-destructive" />
-              <div className="text-sm">
-                <p className="font-medium text-destructive">Permit expired</p>
-                <p className="text-muted-foreground">
-                  Your active permit has expired. Create a new one to continue with {action}.
-                </p>
-              </div>
+      {status === "expired" && (
+        <>
+          <div className="flex items-start gap-2">
+            <RefreshCw className="h-4 w-4 mt-0.5 shrink-0 text-destructive/60" />
+            <div>
+              <p className="font-mono text-xs font-medium text-destructive">Permit expired</p>
+              <p className="font-mono text-[10px] text-muted-foreground mt-0.5">
+                Your active permit has expired. Create a new one to continue with {action}.
+              </p>
             </div>
-            <div className="flex gap-2">
-              <Button size="sm" onClick={() => navigateToCreate({})}>
-                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                Create New Permit
+          </div>
+          <div className="flex gap-2">
+            <Button size="xs" onClick={() => navigateToCreate({})} className="font-mono text-[10px] uppercase tracking-wider">
+              Create New Permit
+            </Button>
+            {active?.permit && (
+              <Button size="xs" variant="ghost" onClick={() => removePermit(active.permit.hash)} className="font-mono text-[10px] uppercase tracking-wider">
+                Remove Expired
               </Button>
-              {active?.permit && (
-                <Button size="sm" variant="ghost" onClick={() => removePermit(active.permit.hash)}>
-                  Remove Expired
-                </Button>
-              )}
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
+            )}
+          </div>
+        </>
+      )}
+    </div>
   );
 }

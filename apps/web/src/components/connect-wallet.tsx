@@ -10,11 +10,11 @@ export function ConnectWallet() {
   if (isConnected && address) {
     return (
       <div className="flex items-center gap-2">
-        <span className="font-mono text-sm">
-          {address.slice(0, 6)}...{address.slice(-4)}
+        <span className="border border-border bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
+          {address.slice(0, 6)}…{address.slice(-4)}
         </span>
-        <Button variant="outline" size="sm" onClick={() => disconnect()}>
-          Disconnect
+        <Button variant="ghost" size="xs" onClick={() => disconnect()} className="font-mono text-xs">
+          ×
         </Button>
       </div>
     );
@@ -25,8 +25,9 @@ export function ConnectWallet() {
       size="sm"
       disabled={isPending}
       onClick={() => connect({ connector: injected() })}
+      className="font-mono text-xs uppercase tracking-wider"
     >
-      {isPending ? "Connecting..." : "Connect Wallet"}
+      {isPending ? "Connecting…" : "Connect"}
     </Button>
   );
 }

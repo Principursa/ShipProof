@@ -3,7 +3,7 @@ import { useWriteContract } from "wagmi";
 import { Button } from "@ShipProof/ui/components/button";
 import { Input } from "@ShipProof/ui/components/input";
 import { Label } from "@ShipProof/ui/components/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@ShipProof/ui/components/card";
+import { Card, CardContent } from "@ShipProof/ui/components/card";
 import { Checkbox } from "@ShipProof/ui/components/checkbox";
 import { Loader2, Check } from "lucide-react";
 import { shipProofAbi, SHIPPROOF_ADDRESS } from "@/lib/contracts";
@@ -55,7 +55,7 @@ export function SelectiveDisclosure({ attestationId, metricCount }: SelectiveDis
       const parts = [];
       if (shareScore) parts.push("score");
       if (selectedSlots.length > 0) parts.push(`${selectedSlots.length} metric(s)`);
-      setSuccess(`Granted access to ${parts.join(" and ")} for ${grantee.slice(0, 6)}...${grantee.slice(-4)}`);
+      setSuccess(`Granted access to ${parts.join(" and ")} for ${grantee.slice(0, 6)}…${grantee.slice(-4)}`);
       setGrantee("");
       setSelectedSlots([]);
       setShareScore(false);
@@ -74,20 +74,26 @@ export function SelectiveDisclosure({ attestationId, metricCount }: SelectiveDis
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Selective Disclosure</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-xs font-semibold uppercase tracking-wider">
+            Selective Disclosure
+          </span>
+        </div>
+
         <div className="space-y-2">
-          <Label htmlFor="grantee">Grantee Address</Label>
+          <Label htmlFor="grantee" className="font-mono text-[10px] uppercase tracking-wider">
+            Grantee Address
+          </Label>
           <Input
             id="grantee"
             placeholder="0x..."
             value={grantee}
             onChange={(e) => setGrantee(e.target.value)}
+            className="font-mono text-xs"
           />
           {grantee && !isValidAddress && (
-            <p className="text-xs text-destructive">Invalid Ethereum address</p>
+            <p className="font-mono text-[10px] text-destructive">Invalid Ethereum address</p>
           )}
         </div>
 
@@ -98,37 +104,45 @@ export function SelectiveDisclosure({ attestationId, metricCount }: SelectiveDis
               checked={shareScore}
               onCheckedChange={(checked) => setShareScore(!!checked)}
             />
-            <Label htmlFor="share-score">Share overall score</Label>
+            <Label htmlFor="share-score" className="font-mono text-xs">Share overall score</Label>
           </div>
 
-          <p className="text-sm font-medium">Share individual metrics:</p>
-          {Array.from({ length: metricCount }, (_, i) => (
-            <div key={i} className="flex items-center space-x-2">
-              <Checkbox
-                id={`slot-${i}`}
-                checked={selectedSlots.includes(i)}
-                onCheckedChange={() => toggleSlot(i)}
-              />
-              <Label htmlFor={`slot-${i}`}>Metric slot {i}</Label>
-            </div>
-          ))}
+          <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground pt-1">
+            Individual metrics
+          </p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {Array.from({ length: metricCount }, (_, i) => (
+              <div key={i} className="flex items-center space-x-2">
+                <Checkbox
+                  id={`slot-${i}`}
+                  checked={selectedSlots.includes(i)}
+                  onCheckedChange={() => toggleSlot(i)}
+                />
+                <Label htmlFor={`slot-${i}`} className="font-mono text-xs">
+                  Slot {i}
+                </Label>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error && <p className="font-mono text-xs text-destructive">{error}</p>}
         {success && (
-          <p className="text-sm text-green-500 flex items-center gap-1">
-            <Check className="h-4 w-4" /> {success}
-          </p>
+          <div className="flex items-center gap-2 border border-primary/20 bg-accent/30 p-2.5">
+            <Check className="h-3.5 w-3.5 text-primary" />
+            <span className="font-mono text-xs text-primary">{success}</span>
+          </div>
         )}
 
         <PermitGate action="granting encrypted data access">
           <Button
             onClick={handleGrant}
             disabled={!isValidAddress || (!shareScore && selectedSlots.length === 0) || isPending}
+            className="w-full font-mono text-xs uppercase tracking-wider"
           >
             {isPending ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Granting...
+                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Granting…
               </>
             ) : (
               "Grant Access"

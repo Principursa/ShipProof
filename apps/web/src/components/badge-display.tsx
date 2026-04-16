@@ -1,7 +1,6 @@
 import { useReadContract } from "wagmi";
-import { Card, CardContent, CardHeader, CardTitle } from "@ShipProof/ui/components/card";
+import { Card, CardContent } from "@ShipProof/ui/components/card";
 import { Skeleton } from "@ShipProof/ui/components/skeleton";
-import { Shield } from "lucide-react";
 import { shipProofAbi, SHIPPROOF_ADDRESS } from "@/lib/contracts";
 
 interface BadgeDisplayProps {
@@ -30,49 +29,51 @@ export function BadgeDisplay({ attestationId }: BadgeDisplayProps) {
   if (!attestation) {
     return (
       <Card>
-        <CardContent className="p-6 text-center text-muted-foreground">
-          Attestation not found.
+        <CardContent className="p-6 text-center">
+          <span className="font-mono text-xs text-muted-foreground">Attestation not found.</span>
         </CardContent>
       </Card>
     );
   }
 
-  // attestations returns a tuple: [identityHash, fromTs, toTs, metricCount, metricsVersion, scoringVersion, wallet, oracleNonce, expiresAt]
   const [, fromTs, toTs, metricCount, metricsVersion, , wallet] = attestation as [
     string, bigint, bigint, number, number, number, string, bigint, bigint,
   ];
 
   const fromDate = new Date(Number(fromTs) * 1000).toLocaleDateString();
   const toDate = new Date(Number(toTs) * 1000).toLocaleDateString();
-  const truncatedWallet = `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
+  const truncatedWallet = `${wallet.slice(0, 6)}…${wallet.slice(-4)}`;
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Shield className="h-5 w-5 text-primary" />
-          ShipProof Badge
+      <CardContent className="p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <img src="/logo.png" alt="" className="h-8 w-auto opacity-80" />
+            <span className="font-mono text-sm font-bold tracking-tight">ShipProof Badge</span>
+          </div>
           {isMinted && (
-            <span className="ml-auto text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded-full">
+            <span className="border border-primary/30 bg-accent/50 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-primary">
               Minted
             </span>
           )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2 text-sm">
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Period</span>
-          <span>{fromDate} — {toDate}</span>
         </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Metrics</span>
-          <span>{metricCount} metrics (v{metricsVersion})</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Wallet</span>
-          <span className="font-mono">{truncatedWallet}</span>
+
+        <div className="space-y-2 border-t border-border/60 pt-3">
+          <Row label="Period" value={`${fromDate} — ${toDate}`} />
+          <Row label="Metrics" value={`${metricCount} metrics (v${metricsVersion})`} />
+          <Row label="Wallet" value={truncatedWallet} mono />
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex justify-between text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={mono ? "font-mono" : ""}>{value}</span>
+    </div>
   );
 }

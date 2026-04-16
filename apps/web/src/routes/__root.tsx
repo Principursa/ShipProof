@@ -18,7 +18,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
       },
       {
         name: "description",
-        content: "ShipProof is a web application",
+        content: "Confidential builder attestation powered by FHE. Prove you ship without exposing your metrics.",
       },
     ],
     links: [
@@ -36,7 +36,7 @@ function RootComponent() {
       <HeadContent />
       <ThemeProvider
         attribute="class"
-        defaultTheme="dark"
+        defaultTheme="light"
         disableTransitionOnChange
         storageKey="vite-ui-theme"
       >

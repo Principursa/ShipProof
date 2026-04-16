@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAccount, useWriteContract, useReadContract, usePublicClient } from "wagmi";
 import { decodeEventLog } from "viem";
 import { Button } from "@ShipProof/ui/components/button";
-import { Card, CardContent } from "@ShipProof/ui/components/card";
-import { Check, Loader2, Circle } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { postAttest, type AttestationEnvelope } from "@/lib/api";
 import { shipProofAbi, SHIPPROOF_ADDRESS, AttestationState } from "@/lib/contracts";
 import { PermitGate } from "./permit-gate";
@@ -18,11 +17,11 @@ interface StepConfig {
 const STEP_CONFIG: Record<FlowStep, StepConfig> = {
   idle: { label: "Ready", description: "Click to start attestation" },
   fetching: { label: "Preparing", description: "Fetching attestation envelope from oracle..." },
-  submit: { label: "Submit Attestation", description: "Submitting encrypted metrics on-chain" },
-  computeScore: { label: "Compute Score", description: "Computing your score on encrypted data" },
-  computePass: { label: "Compute Pass", description: "Evaluating pass/fail against threshold" },
-  decrypt: { label: "Request Decryption", description: "Requesting FHE decryption of result" },
-  mint: { label: "Mint Badge", description: "Minting your ShipProof badge" },
+  submit: { label: "Submit", description: "Submit encrypted metrics on-chain" },
+  computeScore: { label: "Score", description: "Compute score on encrypted data" },
+  computePass: { label: "Pass", description: "Evaluate against threshold" },
+  decrypt: { label: "Decrypt", description: "Request FHE decryption" },
+  mint: { label: "Mint", description: "Mint your soulbound badge" },
   done: { label: "Complete", description: "Badge minted!" },
   failed: { label: "Failed", description: "Score below threshold" },
 };
@@ -61,7 +60,6 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
 
   const { writeContractAsync } = useWriteContract();
 
-  // Recover state on mount
   useEffect(() => {
     const saved = loadSavedState();
     if (saved && saved.attestationId) {
@@ -70,14 +68,12 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
     }
   }, []);
 
-  // Persist state changes
   useEffect(() => {
     if (attestationId && step !== "idle") {
       saveState({ attestationId, step });
     }
   }, [attestationId, step]);
 
-  // Check on-chain state for recovery
   const { data: onChainState } = useReadContract({
     address: SHIPPROOF_ADDRESS,
     abi: shipProofAbi,
@@ -86,7 +82,6 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
     query: { enabled: !!attestationId && step !== "idle" },
   });
 
-  // Sync step from on-chain state on recovery
   useEffect(() => {
     if (onChainState === undefined || !attestationId) return;
     const state = Number(onChainState);
@@ -145,7 +140,6 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
         args: [meta, configs, encInputs, envelope.signature as `0x${string}`],
       });
 
-      // Wait for receipt and parse attestationId from Attested event
       const receipt = await publicClient!.waitForTransactionReceipt({ hash });
       const attestedLog = receipt.logs.find((log) => {
         try {
@@ -195,93 +189,102 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
   const currentStepIndex = STEP_ORDER.indexOf(step);
 
   return (
-    <Card>
-      <CardContent className="space-y-4 p-6">
-        <div className="space-y-3">
-          {STEP_ORDER.map((s, i) => {
-            const config = STEP_CONFIG[s];
-            const isActive = s === step;
-            const isDone = currentStepIndex > i || step === "done";
-            return (
-              <div key={s} className="flex items-start gap-3">
-                <div className="mt-0.5">
-                  {isDone ? (
-                    <Check className="h-5 w-5 text-green-500" />
-                  ) : isActive ? (
-                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                  ) : (
-                    <Circle className="h-5 w-5 text-muted-foreground" />
-                  )}
-                </div>
-                <div>
-                  <p className={`text-sm font-medium ${isActive ? "text-primary" : isDone ? "text-green-500" : "text-muted-foreground"}`}>
-                    {config.label}
-                  </p>
-                  {isActive && (
-                    <p className="text-xs text-muted-foreground">{config.description}</p>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+    <div className="space-y-4">
+      {/* Progress bar */}
+      <div className="flex items-center gap-1">
+        {STEP_ORDER.map((s, i) => {
+          const isDone = currentStepIndex > i || step === "done";
+          const isActive = s === step;
+          return (
+            <div key={s} className="flex flex-1 flex-col gap-1.5">
+              <div
+                className={`h-1 w-full transition-colors ${
+                  isDone ? "bg-primary" : isActive ? "bg-primary/40" : "bg-border"
+                }`}
+              />
+              <span className={`font-mono text-[10px] uppercase tracking-wider ${
+                isDone ? "text-primary" : isActive ? "text-foreground" : "text-muted-foreground/50"
+              }`}>
+                {STEP_CONFIG[s].label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Active step description */}
+      {step !== "idle" && step !== "done" && step !== "failed" && (
+        <p className="text-xs text-muted-foreground">
+          {STEP_CONFIG[step].description}
+        </p>
+      )}
+
+      {step === "done" && (
+        <div className="flex items-center gap-2 border border-primary/20 bg-accent/30 p-3">
+          <Check className="h-4 w-4 text-primary" />
+          <span className="font-mono text-xs font-medium text-primary">
+            Badge minted — view your proof to share selectively.
+          </span>
         </div>
+      )}
 
-        {step === "done" && (
-          <p className="text-center text-sm text-green-500 font-medium">
-            Badge minted! View your badge to share your proof.
-          </p>
-        )}
-
-        {step === "failed" && (
-          <p className="text-center text-sm text-destructive font-medium">
-            Score below threshold. Keep building!
-          </p>
-        )}
-
-        {error && (
-          <p className="text-sm text-destructive">{error}</p>
-        )}
-
-        <div className="flex justify-center pt-2">
-          {step === "idle" && (
-            <Button onClick={startAttestation} disabled={!address}>
-              Generate Score
-            </Button>
-          )}
-          {step === "fetching" && (
-            <Button disabled>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Preparing...
-            </Button>
-          )}
-          {step === "submit" && (
-            <Button onClick={submitTx}>
-              Submit Attestation (Tx 1/5)
-            </Button>
-          )}
-          {step === "computeScore" && (
-            <Button onClick={() => callContractStep("computeScore", "computePass")}>
-              Compute Score (Tx 2/5)
-            </Button>
-          )}
-          {step === "computePass" && (
-            <Button onClick={() => callContractStep("computePass", "decrypt")}>
-              Compute Pass (Tx 3/5)
-            </Button>
-          )}
-          {step === "decrypt" && (
-            <PermitGate action="decrypting your result">
-              <Button onClick={() => callContractStep("requestPassDecryption", "mint")}>
-                Reveal Result (Tx 4/5)
-              </Button>
-            </PermitGate>
-          )}
-          {step === "mint" && (
-            <Button onClick={() => callContractStep("mintBadge", "done")}>
-              Mint Badge (Tx 5/5)
-            </Button>
-          )}
+      {step === "failed" && (
+        <div className="border border-destructive/20 bg-destructive/5 p-3">
+          <span className="font-mono text-xs text-destructive">
+            Score below threshold. Keep building and try again.
+          </span>
         </div>
-      </CardContent>
-    </Card>
+      )}
+
+      {error && (
+        <p className="font-mono text-xs text-destructive">{error}</p>
+      )}
+
+      {/* Action button */}
+      <div>
+        {step === "idle" && (
+          <Button onClick={startAttestation} disabled={!address} className="w-full font-mono text-xs uppercase tracking-wider">
+            Generate Score
+          </Button>
+        )}
+        {step === "fetching" && (
+          <Button disabled className="w-full font-mono text-xs uppercase tracking-wider">
+            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Preparing…
+          </Button>
+        )}
+        {step === "submit" && (
+          <Button onClick={submitTx} className="w-full font-mono text-xs uppercase tracking-wider">
+            Submit Attestation
+            <span className="ml-auto text-[10px] opacity-60">1/5</span>
+          </Button>
+        )}
+        {step === "computeScore" && (
+          <Button onClick={() => callContractStep("computeScore", "computePass")} className="w-full font-mono text-xs uppercase tracking-wider">
+            Compute Score
+            <span className="ml-auto text-[10px] opacity-60">2/5</span>
+          </Button>
+        )}
+        {step === "computePass" && (
+          <Button onClick={() => callContractStep("computePass", "decrypt")} className="w-full font-mono text-xs uppercase tracking-wider">
+            Compute Pass
+            <span className="ml-auto text-[10px] opacity-60">3/5</span>
+          </Button>
+        )}
+        {step === "decrypt" && (
+          <PermitGate action="decrypting your result">
+            <Button onClick={() => callContractStep("requestPassDecryption", "mint")} className="w-full font-mono text-xs uppercase tracking-wider">
+              Reveal Result
+              <span className="ml-auto text-[10px] opacity-60">4/5</span>
+            </Button>
+          </PermitGate>
+        )}
+        {step === "mint" && (
+          <Button onClick={() => callContractStep("mintBadge", "done")} className="w-full font-mono text-xs uppercase tracking-wider">
+            Mint Badge
+            <span className="ml-auto text-[10px] opacity-60">5/5</span>
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }
