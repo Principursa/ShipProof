@@ -6,6 +6,7 @@ import { Card, CardContent } from "@ShipProof/ui/components/card";
 import { Check, Loader2, Circle } from "lucide-react";
 import { postAttest, type AttestationEnvelope } from "@/lib/api";
 import { shipProofAbi, SHIPPROOF_ADDRESS, AttestationState } from "@/lib/contracts";
+import { PermitGate } from "./permit-gate";
 
 type FlowStep = "idle" | "fetching" | "submit" | "computeScore" | "computePass" | "decrypt" | "mint" | "done" | "failed";
 
@@ -268,9 +269,11 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
             </Button>
           )}
           {step === "decrypt" && (
-            <Button onClick={() => callContractStep("requestPassDecryption", "mint")}>
-              Reveal Result (Tx 4/5)
-            </Button>
+            <PermitGate action="decrypting your result">
+              <Button onClick={() => callContractStep("requestPassDecryption", "mint")}>
+                Reveal Result (Tx 4/5)
+              </Button>
+            </PermitGate>
           )}
           {step === "mint" && (
             <Button onClick={() => callContractStep("mintBadge", "done")}>

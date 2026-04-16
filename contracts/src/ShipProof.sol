@@ -26,6 +26,42 @@ struct MetricConfig {
     uint32 weight;
 }
 
+/// @title ShipProof — Confidential builder attestation with FHE-encrypted scoring
+/// @notice Accepts oracle-attested encrypted metrics, computes scores on-chain via FHE,
+///         and enables user-controlled selective disclosure to third parties.
+///
+/// @dev Handle-Authorization Model
+/// ================================
+/// Every encrypted value (euint32, euint8, ebool) is an FHE "handle". Handles require
+/// explicit authorization before they can be used in computation or re-encrypted for viewing.
+///
+/// Authorization invariants:
+///   1. The contract itself (`allowThis`) is authorized on ALL stored handles — required for
+///      on-chain FHE operations (add, mul, div, select, gte, decrypt).
+///   2. The attestation wallet (`FHE.allow(handle, wallet)`) is authorized on its own metrics,
+///      score, pass result, and tier — enabling client-side unsealing via permits.
+///   3. Third-party grantees receive authorization ONLY through explicit user action
+///      (`grantScoreAccess`, `grantMetricAccess`). The owner and oracle never receive handle access.
+///   4. Constants (ENC_SCALE, ENC_ZERO, ENC_THRESHOLD) are `allowThis`-only — no external
+///      address ever needs to unseal these.
+///
+/// Trust boundary:
+///   - Encrypted inputs (InEuint32) originate from the oracle and are bound to the attestation
+///     envelope via EIP-712 signature over `ctInputsHash`. The contract cannot validate plaintext
+///     values inside ciphertext — it trusts the oracle's signature.
+///   - `FHE.asEuint32(InEuint32)` converts oracle-provided ciphertext into on-chain handles.
+///     This does NOT verify the plaintext is within any range. Cap-and-normalize in `computeScore`
+///     is defense-in-depth: even if raw values exceed caps, the scoring formula clamps them.
+///   - `FHE.allow(handle, address)` grants re-encryption rights — the grantee can unseal the
+///     value via a CoFHE permit. It does NOT grant on-chain compute rights (only `allowThis` does).
+///   - `FHE.decrypt(handle)` initiates async decryption. Once complete, `getDecryptResultSafe`
+///     returns plaintext — this value becomes PUBLIC to the calling contract. Used only for
+///     the pass/fail boolean, never for scores or metrics.
+///
+/// State machine: None → Submitted → ScoreComputed → PassComputed → DecryptRequested → BadgeMinted
+///   - Each transition is enforced by `_requireState` (exact match) or `>=` checks (computeTier).
+///   - `computeTier` is a side-channel available after ScoreComputed; it does not advance the
+///     main lifecycle and can be called at any point after scoring.
 contract ShipProof is Ownable, EIP712 {
     // --- Constants ---
     bytes32 public constant ATTESTATION_TYPEHASH = keccak256(
@@ -41,16 +77,21 @@ contract ShipProof is Ownable, EIP712 {
     // --- Storage ---
     mapping(bytes32 => AttestationMeta) public attestations;
     mapping(bytes32 => AttestationState) public attestationState;
+    /// @dev Authorized: allowThis + wallet. Grantees added via grantMetricAccess.
     mapping(bytes32 => euint32[16]) internal encMetrics;
     mapping(bytes32 => MetricConfig[16]) public metricConfigs;
+    /// @dev Authorized: allowThis + wallet. Grantees added via grantScoreAccess.
     mapping(bytes32 => euint32) internal encScores;
+    /// @dev Authorized: allowThis + wallet. Decrypted only via requestPassDecryption.
     mapping(bytes32 => ebool)   internal encPassed;
+    /// @dev Authorized: allowThis + wallet. Side-channel computed via computeTier.
     mapping(bytes32 => euint8)  internal encTiers;
     mapping(bytes32 => bool)    public   badgeMinted;
     mapping(bytes32 => bytes32) public   identityAttestation;
     mapping(bytes32 => bool)    public   nonceUsed; // key = keccak256(abi.encodePacked(signer, nonce))
     mapping(address => bool)    public   isOracle;
 
+    /// @dev Constants: allowThis-only, no external address is ever authorized.
     euint32 internal ENC_SCALE;
     euint32 internal ENC_ZERO;
     euint32 internal ENC_THRESHOLD;
@@ -81,6 +122,7 @@ contract ShipProof is Ownable, EIP712 {
     error DecryptionNotReady();
     error ScoreBelowThreshold();
     error InvalidSlot();
+    error ScoreNotComputed();
 
     constructor(
         address _badge,
@@ -112,6 +154,12 @@ contract ShipProof is Ownable, EIP712 {
     }
 
     // --- Core ---
+
+    /// @notice Submit an oracle-attested set of encrypted metrics.
+    /// @dev Handle creation: converts each InEuint32 → euint32 via FHE.asEuint32().
+    ///      Authorization: allowThis (for scoring) + allow(wallet) (for user unsealing).
+    ///      Assumption: msg.sender == meta.wallet — prevents unauthorized envelope submission.
+    ///      Assumption: oracle ciphertext is faithful — contract cannot inspect plaintext inside InEuint32.
     function submitAttestation(
         AttestationMeta calldata meta,
         MetricConfig[] calldata configs,
@@ -183,6 +231,11 @@ contract ShipProof is Ownable, EIP712 {
         emit Attested(attestationId, meta.wallet, meta.metricCount, meta.metricsVersion, meta.scoringVersion);
     }
 
+    /// @notice Compute weighted normalized score from encrypted metrics.
+    /// @dev Reads encMetrics handles (authorized via allowThis from submitAttestation).
+    ///      Creates intermediate encrypted values for cap, weight, accumulation — these are
+    ///      ephemeral and not stored. Final score handle: allowThis + allow(wallet).
+    ///      All operations are constant-time per metric count — no branching on encrypted values.
     function computeScore(bytes32 attestationId) external returns (euint32) {
         _requireState(attestationId, AttestationState.Submitted);
         if (msg.sender != attestations[attestationId].wallet) revert NotWallet();
@@ -225,6 +278,10 @@ contract ShipProof is Ownable, EIP712 {
         return score;
     }
 
+    /// @notice Compare encrypted score against threshold to produce encrypted pass/fail.
+    /// @dev Reads encScores handle (authorized via allowThis from computeScore).
+    ///      Reads ENC_THRESHOLD (authorized via allowThis from constructor/updateThreshold).
+    ///      Result handle: allowThis + allow(wallet). Never decrypted here — that's requestPassDecryption.
     function computePass(bytes32 attestationId) external returns (ebool) {
         _requireState(attestationId, AttestationState.ScoreComputed);
         if (msg.sender != attestations[attestationId].wallet) revert NotWallet();
@@ -241,6 +298,11 @@ contract ShipProof is Ownable, EIP712 {
         return passed;
     }
 
+    /// @notice Request async decryption of the pass/fail boolean via CoFHE coprocessor.
+    /// @dev Reads encPassed handle. FHE.decrypt() initiates async decryption — result becomes
+    ///      available via getDecryptResultSafe after coprocessor completes. The decrypted boolean
+    ///      is PUBLIC to this contract (used in mintBadge). Only the pass/fail bit is ever decrypted;
+    ///      scores and metrics remain encrypted unless the user grants access.
     function requestPassDecryption(bytes32 attestationId) external {
         _requireState(attestationId, AttestationState.PassComputed);
         if (msg.sender != attestations[attestationId].wallet) revert NotWallet();
@@ -252,6 +314,10 @@ contract ShipProof is Ownable, EIP712 {
         emit DecryptionRequested(attestationId);
     }
 
+    /// @notice Mint soulbound badge if decrypted pass result is true.
+    /// @dev Reads decrypted plaintext from getDecryptResultSafe — no handle authorization needed
+    ///      for reading plaintext. The tier emitted in the event is a placeholder (1); actual tier
+    ///      is computed separately via computeTier and remains encrypted.
     function mintBadge(bytes32 attestationId) external {
         _requireState(attestationId, AttestationState.DecryptRequested);
         if (msg.sender != attestations[attestationId].wallet) revert NotWallet();
@@ -269,6 +335,11 @@ contract ShipProof is Ownable, EIP712 {
         emit BadgeMinted(attestationId, wallet, 1);
     }
 
+    /// @notice Compute encrypted tier (0-3) from score for granular disclosure.
+    /// @dev Side-channel: does not advance main state machine. Reads encScores handle
+    ///      (authorized via allowThis). Creates tier handle: allowThis + allow(wallet).
+    ///      Tier thresholds are public policy (25%, 50%, 75%) — no information leaks from
+    ///      the comparison count since all three comparisons always execute (constant-time).
     function computeTier(bytes32 attestationId) external returns (euint8) {
         if (attestationState[attestationId] < AttestationState.ScoreComputed) {
             revert WrongState(AttestationState.ScoreComputed, attestationState[attestationId]);
@@ -294,12 +365,20 @@ contract ShipProof is Ownable, EIP712 {
         return tier;
     }
 
+    /// @notice Grant a third-party address permission to unseal the encrypted score.
+    /// @dev Calls FHE.allow(scoreHandle, grantee). Requires score to exist (state >= ScoreComputed)
+    ///      to prevent granting access to an uninitialized zero handle. Only the attestation wallet
+    ///      can grant — the owner/oracle cannot share a user's score.
     function grantScoreAccess(bytes32 attestationId, address grantee) external {
         if (msg.sender != attestations[attestationId].wallet) revert NotWallet();
+        if (attestationState[attestationId] < AttestationState.ScoreComputed) revert ScoreNotComputed();
         FHE.allow(encScores[attestationId], grantee);
         emit ScoreAccessGranted(attestationId, grantee);
     }
 
+    /// @notice Grant a third-party address permission to unseal a specific encrypted metric.
+    /// @dev Calls FHE.allow(metricHandle, grantee). Metric handles exist from submitAttestation,
+    ///      so no additional state check needed — the slot bounds check is sufficient.
     function grantMetricAccess(bytes32 attestationId, uint8 slotIndex, address grantee) external {
         if (msg.sender != attestations[attestationId].wallet) revert NotWallet();
         if (slotIndex >= attestations[attestationId].metricCount) revert InvalidSlot();

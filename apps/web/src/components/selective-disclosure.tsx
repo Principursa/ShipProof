@@ -8,6 +8,7 @@ import { Checkbox } from "@ShipProof/ui/components/checkbox";
 import { Loader2, Check } from "lucide-react";
 import { shipProofAbi, SHIPPROOF_ADDRESS } from "@/lib/contracts";
 import { isAddress } from "viem";
+import { PermitGate } from "./permit-gate";
 
 interface SelectiveDisclosureProps {
   attestationId: `0x${string}`;
@@ -120,18 +121,20 @@ export function SelectiveDisclosure({ attestationId, metricCount }: SelectiveDis
           </p>
         )}
 
-        <Button
-          onClick={handleGrant}
-          disabled={!isValidAddress || (!shareScore && selectedSlots.length === 0) || isPending}
-        >
-          {isPending ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Granting...
-            </>
-          ) : (
-            "Grant Access"
-          )}
-        </Button>
+        <PermitGate action="granting encrypted data access">
+          <Button
+            onClick={handleGrant}
+            disabled={!isValidAddress || (!shareScore && selectedSlots.length === 0) || isPending}
+          >
+            {isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Granting...
+              </>
+            ) : (
+              "Grant Access"
+            )}
+          </Button>
+        </PermitGate>
       </CardContent>
     </Card>
   );

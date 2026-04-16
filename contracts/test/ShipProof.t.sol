@@ -316,6 +316,15 @@ contract ShipProofTest is ShipProofTestHelper {
         sp.grantMetricAccess(id, 5, bob);
     }
 
+    function test_grantScoreAccess_revert_scoreNotComputed() public {
+        // Submit but don't compute score — grantScoreAccess should revert
+        bytes32 id = _submitAttestation(alice, 1, 50, 100, 10000, 1);
+
+        vm.prank(alice);
+        vm.expectRevert(ShipProof.ScoreNotComputed.selector);
+        sp.grantScoreAccess(id, bob);
+    }
+
     function test_grantAccess_revert_notOwner() public {
         bytes32 id = _submitAttestation(alice, 1, 50, 100, 10000, 1);
         vm.prank(alice);

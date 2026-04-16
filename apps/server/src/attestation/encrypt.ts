@@ -44,7 +44,7 @@ export function hashCtInputs(encryptedInputs: InEuint32Like[]): `0x${string}` {
   return keccak256(concatHex(encodedParts));
 }
 
-/** Shape of cofhejs InEuint32 output */
+/** Shape of @cofhe/sdk EncryptedItemInput output */
 export interface InEuint32Like {
   ctHash: string | bigint;
   securityZone: number;
@@ -53,25 +53,24 @@ export interface InEuint32Like {
 }
 
 /**
- * Encrypt metric values using cofhejs.
+ * Encrypt metric values using @cofhe/sdk.
  * Returns the encrypted inputs and a hash matching the contract's _hashCtInputs.
  *
- * IMPORTANT: cofhejs.initialize() must be called before this function.
+ * IMPORTANT: The CofheClient must be initialized and connected before calling this.
  */
 export async function encryptMetrics(
   values: number[],
 ): Promise<{ encryptedInputs: InEuint32Like[]; ctInputsHash: `0x${string}` }> {
-  const { cofhejs, Encryptable } = await import("cofhejs/node");
-
-  const result = await cofhejs.encrypt(
-    values.map((v) => Encryptable.uint32(BigInt(v))),
-  );
-
-  if (!result.success) {
-    throw new Error(`CoFHE encryption failed: ${(result as any).error}`);
+  const { Encryptable } = await import("@cofhe/sdk");
+  const client = (globalThis as any).__cofheClient;
+  if (!client) {
+    throw new Error("CofheClient not initialized — is ARB_SEPOLIA_RPC_URL set?");
   }
 
-  const encryptedInputs = result.data as unknown as InEuint32Like[];
+  const items = values.map((v) => Encryptable.uint32(BigInt(v)));
+  const encrypted = await client.encryptInputs(items).execute();
+
+  const encryptedInputs = encrypted as unknown as InEuint32Like[];
   const ctInputsHash = hashCtInputs(encryptedInputs);
 
   return { encryptedInputs, ctInputsHash };
