@@ -217,5 +217,76 @@ describe("GitHubProvider", () => {
       expect(byKey["gh_reviews"]!.weight).toBe(1000);
       expect(byKey["gh_repo_breadth"]!.weight).toBe(1000);
     });
+
+    test("throws on non-ok GraphQL response (e.g. rate limit)", async () => {
+      const provider = new GitHubProvider(CLIENT_ID, CLIENT_SECRET);
+
+      let callCount = 0;
+      globalThis.fetch = mock(() => {
+        callCount++;
+        if (callCount === 1) {
+          // First call is the /user call for login lookup
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ login: "octocat" }),
+          });
+        }
+        // Second call is the GraphQL call — simulate rate limit
+        return Promise.resolve({
+          ok: false,
+          status: 403,
+          json: () => Promise.resolve({ message: "API rate limit exceeded" }),
+        });
+      }) as unknown as typeof fetch;
+
+      expect(
+        provider.fetchMetrics(TOKENS, "octocat", {
+          from: new Date("2024-01-01"),
+          to: new Date("2024-12-31"),
+        }),
+      ).rejects.toThrow("GitHub GraphQL request failed: 403");
+    });
+
+    test("returns zero values for empty contribution window", async () => {
+      const provider = new GitHubProvider(CLIENT_ID, CLIENT_SECRET);
+
+      let callCount = 0;
+      globalThis.fetch = mock(() => {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ login: "octocat" }),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              data: {
+                user: {
+                  contributionsCollection: {
+                    totalCommitContributions: 0,
+                    totalPullRequestContributions: 0,
+                    totalIssueContributions: 0,
+                    totalPullRequestReviewContributions: 0,
+                    totalRepositoriesWithContributedCommits: 0,
+                  },
+                },
+              },
+            }),
+        });
+      }) as unknown as typeof fetch;
+
+      const result = await provider.fetchMetrics(TOKENS, "octocat", {
+        from: new Date("2024-01-01"),
+        to: new Date("2024-12-31"),
+      });
+
+      for (const metric of result.metrics) {
+        expect(metric.value).toBe(0);
+      }
+      expect(result.metrics).toHaveLength(5);
+    });
   });
 });
