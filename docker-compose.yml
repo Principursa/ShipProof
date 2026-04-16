@@ -10,7 +10,6 @@ services:
       - caddy
     labels:
       caddy: shipproof.lol
-      caddy.tls: internal
       caddy.reverse_proxy: "{{upstreams 3001}}"
 
   server:
@@ -23,9 +22,9 @@ services:
     networks:
       - caddy
     labels:
-      caddy: api.shipproof.lol
-      caddy.tls: internal
-      caddy.reverse_proxy: "{{upstreams 3000}}"
+      caddy: shipproof.lol
+      caddy.handle_path: /api/*
+      caddy.handle_path.0_reverse_proxy: "{{upstreams 3000}}"
 
 volumes:
   node_modules:

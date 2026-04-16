@@ -10,8 +10,8 @@ function HomeComponent() {
   return (
     <div className="flex flex-col overflow-x-hidden">
       {/* Hero */}
-      <section className="relative mx-auto flex w-full max-w-6xl px-8 pt-24 pb-20 md:pt-32 md:pb-28">
-        <div className="flex flex-col gap-8 md:flex-row md:items-end md:justify-between md:gap-16">
+      <section className="relative mx-auto flex w-full max-w-3xl px-8 pt-24 pb-20 md:pt-32 md:pb-28">
+        <div className="flex w-full flex-col gap-8 md:flex-row md:items-end md:gap-12">
           {/* Left: headline */}
           <div className="max-w-xl animate-fade-up">
             <p className="mb-4 font-mono text-[11px] uppercase tracking-[0.25em] text-muted-foreground">
