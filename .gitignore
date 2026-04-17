@@ -64,7 +64,10 @@ temp
 keystore/
 
 # MD files
-HACKATHON_DESCRIPTION.md 
-DEVELOPMENT_SPEC.md 
+HACKATHON_DESCRIPTION.md
+DEVELOPMENT_SPEC.md
 CLAUDE.md
+
+# Local docs
+docs/
 
