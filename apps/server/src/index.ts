@@ -43,9 +43,10 @@ app.route("/attest", createAttestRouter(
 // Health check
 app.get("/health", (c) => c.json({ status: "ok" }));
 
-// Initialize cofhejs for server-side encryption (required before /attest works)
+// Initialize @cofhe/sdk for server-side encryption (required before /attest works)
 if (env.ARB_SEPOLIA_RPC_URL) {
-  import("cofhejs/node").then(async ({ cofhejs }) => {
+  import("@cofhe/sdk/node").then(async ({ createCofheConfig, createCofheClient }) => {
+    const { arbSepolia } = await import("@cofhe/sdk/chains");
     const { createPublicClient, createWalletClient, http } = await import("viem");
     const { privateKeyToAccount } = await import("viem/accounts");
     const { arbitrumSepolia } = await import("viem/chains");
@@ -53,13 +54,18 @@ if (env.ARB_SEPOLIA_RPC_URL) {
     const transport = http(env.ARB_SEPOLIA_RPC_URL);
     const account = privateKeyToAccount(env.ORACLE_PRIVATE_KEY as `0x${string}`);
 
-    const viemClient = createPublicClient({ chain: arbitrumSepolia, transport });
-    const viemWalletClient = createWalletClient({ account, chain: arbitrumSepolia, transport });
+    const publicClient = createPublicClient({ chain: arbitrumSepolia, transport });
+    const walletClient = createWalletClient({ account, chain: arbitrumSepolia, transport });
 
-    await cofhejs.initializeWithViem({ viemClient, viemWalletClient });
-    console.log("cofhejs initialized");
+    const config = createCofheConfig({ supportedChains: [arbSepolia] });
+    const client = createCofheClient(config);
+    await client.connect(publicClient, walletClient);
+
+    // Store client globally for use in attestation pipeline
+    (globalThis as any).__cofheClient = client;
+    console.log("@cofhe/sdk initialized");
   }).catch((err) => {
-    console.warn("cofhejs initialization failed (encryption will not work):", err);
+    console.warn("@cofhe/sdk initialization failed (encryption will not work):", err);
   });
 }
 

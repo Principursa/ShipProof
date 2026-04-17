@@ -19,19 +19,29 @@ function BadgePage() {
     args: [attestationId],
   });
 
-  // metricCount is index 3 in the tuple
   const metricCount = attestation ? Number((attestation as unknown as any[])[3]) : 0;
 
   return (
-    <div className="container mx-auto max-w-xl px-4 py-6 space-y-6">
-      <h1 className="text-2xl font-bold">ShipProof Badge</h1>
-      <BadgeDisplay attestationId={attestationId} />
-      {metricCount > 0 && (
-        <SelectiveDisclosure
-          attestationId={attestationId}
-          metricCount={metricCount}
-        />
-      )}
+    <div className="mx-auto w-full max-w-xl px-6 py-12 md:py-16">
+      <div className="mb-10 animate-fade-up">
+        <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
+          On-chain Proof
+        </p>
+        <h1 className="font-serif text-4xl tracking-tight">Badge</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          View your attestation and manage selective disclosure.
+        </p>
+      </div>
+
+      <div className="space-y-4 animate-fade-up" style={{ animationDelay: "100ms" }}>
+        <BadgeDisplay attestationId={attestationId} />
+        {metricCount > 0 && (
+          <SelectiveDisclosure
+            attestationId={attestationId}
+            metricCount={metricCount}
+          />
+        )}
+      </div>
     </div>
   );
 }

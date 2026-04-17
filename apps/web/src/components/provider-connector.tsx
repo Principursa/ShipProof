@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Check, ExternalLink } from "lucide-react";
 import { Button } from "@ShipProof/ui/components/button";
-import { Card, CardContent } from "@ShipProof/ui/components/card";
 import { Skeleton } from "@ShipProof/ui/components/skeleton";
 import { fetchProviders, fetchAuthStatus } from "@/lib/api";
 import { env } from "@ShipProof/env/web";
@@ -10,19 +9,20 @@ export function ProviderConnector() {
   const { data: providers, isLoading: loadingProviders } = useQuery({
     queryKey: ["providers"],
     queryFn: fetchProviders,
+    staleTime: Infinity,
   });
 
-  const { data: status, isLoading: loadingStatus } = useQuery({
+  const { data: status } = useQuery({
     queryKey: ["auth-status"],
     queryFn: fetchAuthStatus,
     refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   });
 
-  if (loadingProviders || loadingStatus) {
+  if (loadingProviders) {
     return (
-      <div className="space-y-3">
-        <Skeleton className="h-16 w-full" />
-        <Skeleton className="h-16 w-full" />
+      <div className="space-y-2">
+        <Skeleton className="h-11 w-full" />
       </div>
     );
   }
@@ -34,35 +34,45 @@ export function ProviderConnector() {
   const connectedIds = status?.connected ?? [];
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {providers.map((provider) => {
         const isConnected = connectedIds.includes(provider.id);
         return (
-          <Card key={provider.id}>
-            <CardContent className="flex items-center justify-between p-4">
-              <div className="flex items-center gap-3">
-                {isConnected ? (
-                  <Check className="h-5 w-5 text-green-500" />
-                ) : (
-                  <div className="h-5 w-5 rounded-full border-2 border-muted-foreground" />
-                )}
-                <span className="font-medium">{provider.displayName}</span>
-              </div>
+          <div
+            key={provider.id}
+            className={`flex items-center justify-between border p-3 transition-all duration-200 ${
+              isConnected
+                ? "stamp-border border-primary/15 bg-accent/30"
+                : "border-border hover:border-border hover:bg-card"
+            }`}
+          >
+            <div className="flex items-center gap-3">
               {isConnected ? (
-                <span className="text-sm text-green-500">Connected</span>
+                <div className="flex h-5 w-5 items-center justify-center bg-primary">
+                  <Check className="h-3 w-3 text-primary-foreground" />
+                </div>
               ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    window.location.href = `${env.VITE_SERVER_URL}/auth/${provider.id}`;
-                  }}
-                >
-                  Connect <ExternalLink className="ml-1 h-3 w-3" />
-                </Button>
+                <div className="h-5 w-5 border border-border" />
               )}
-            </CardContent>
-          </Card>
+              <span className="text-sm font-medium">{provider.displayName}</span>
+            </div>
+            {isConnected ? (
+              <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-primary/60">
+                Linked
+              </span>
+            ) : (
+              <Button
+                size="xs"
+                variant="outline"
+                className="font-mono text-[10px] uppercase tracking-[0.15em]"
+                onClick={() => {
+                  window.location.href = `${env.VITE_SERVER_URL}/auth/${provider.id}`;
+                }}
+              >
+                Connect <ExternalLink className="ml-1 h-2.5 w-2.5" />
+              </Button>
+            )}
+          </div>
         );
       })}
     </div>

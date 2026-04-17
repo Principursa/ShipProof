@@ -135,6 +135,20 @@ export const shipProofAbi = [
     stateMutability: "view",
   },
   {
+    type: "function",
+    name: "getEncScore",
+    inputs: [{ name: "attestationId", type: "bytes32" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "getEncTier",
+    inputs: [{ name: "attestationId", type: "bytes32" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
     type: "event",
     name: "Attested",
     inputs: [

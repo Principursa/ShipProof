@@ -1,7 +1,8 @@
 import { useReadContract } from "wagmi";
-import { Card, CardContent, CardHeader, CardTitle } from "@ShipProof/ui/components/card";
+import { useCofheReadContractAndDecrypt } from "@cofhe/react";
+import { Card, CardContent } from "@ShipProof/ui/components/card";
 import { Skeleton } from "@ShipProof/ui/components/skeleton";
-import { Shield } from "lucide-react";
+import { Lock, Loader2 } from "lucide-react";
 import { shipProofAbi, SHIPPROOF_ADDRESS } from "@/lib/contracts";
 
 interface BadgeDisplayProps {
@@ -23,56 +24,84 @@ export function BadgeDisplay({ attestationId }: BadgeDisplayProps) {
     args: [attestationId],
   });
 
-  if (isLoading) {
-    return <Skeleton className="h-48 w-full" />;
-  }
+  const { decrypted: decryptedScore, disabledDueToMissingPermit } = useCofheReadContractAndDecrypt({
+    address: SHIPPROOF_ADDRESS,
+    abi: shipProofAbi,
+    functionName: "getEncScore",
+    args: [attestationId],
+  });
+
+  if (isLoading) return <Skeleton className="h-52 w-full" />;
 
   if (!attestation) {
     return (
       <Card>
-        <CardContent className="p-6 text-center text-muted-foreground">
-          Attestation not found.
+        <CardContent className="p-8 text-center">
+          <span className="text-sm text-muted-foreground">Attestation not found.</span>
         </CardContent>
       </Card>
     );
   }
 
-  // attestations returns a tuple: [identityHash, fromTs, toTs, metricCount, metricsVersion, scoringVersion, wallet, oracleNonce, expiresAt]
   const [, fromTs, toTs, metricCount, metricsVersion, , wallet] = attestation as [
     string, bigint, bigint, number, number, number, string, bigint, bigint,
   ];
 
   const fromDate = new Date(Number(fromTs) * 1000).toLocaleDateString();
   const toDate = new Date(Number(toTs) * 1000).toLocaleDateString();
-  const truncatedWallet = `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
+  const truncatedWallet = `${wallet.slice(0, 6)}…${wallet.slice(-4)}`;
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Shield className="h-5 w-5 text-primary" />
-          ShipProof Badge
+    <Card className="stamp-border overflow-hidden">
+      <CardContent className="p-0">
+        {/* Header band */}
+        <div className="flex items-center justify-between border-b border-border/50 bg-accent/30 px-5 py-3">
+          <div className="flex items-center gap-3">
+            <img src="/logo.png" alt="" className="h-7 w-auto" />
+            <span className="font-serif text-base tracking-tight">ShipProof Badge</span>
+          </div>
           {isMinted && (
-            <span className="ml-auto text-xs bg-green-500/10 text-green-500 px-2 py-0.5 rounded-full">
+            <span className="bg-primary px-2.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.2em] text-primary-foreground">
               Minted
             </span>
           )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2 text-sm">
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Period</span>
-          <span>{fromDate} — {toDate}</span>
         </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Metrics</span>
-          <span>{metricCount} metrics (v{metricsVersion})</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Wallet</span>
-          <span className="font-mono">{truncatedWallet}</span>
+
+        {/* Data rows */}
+        <div className="divide-y divide-border/30 px-5">
+          <DataRow label="Period" value={`${fromDate} — ${toDate}`} />
+          <DataRow label="Metrics" value={`${metricCount} encrypted (v${metricsVersion})`} />
+          <div className="flex items-center justify-between py-3">
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Score</span>
+            {disabledDueToMissingPermit ? (
+              <span className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
+                <Lock className="h-3 w-3" /> Encrypted
+              </span>
+            ) : decryptedScore.isLoading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            ) : decryptedScore.data != null ? (
+              <span className="font-mono text-sm font-medium text-primary">
+                {(Number(decryptedScore.data) / 100).toFixed(1)}%
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
+                <Lock className="h-3 w-3" /> Encrypted
+              </span>
+            )}
+          </div>
+          <DataRow label="Wallet" value={truncatedWallet} mono />
+          <DataRow label="Attestation" value={`${attestationId.slice(0, 10)}…${attestationId.slice(-6)}`} mono />
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function DataRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between py-3">
+      <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">{label}</span>
+      <span className={`text-sm ${mono ? "font-mono text-xs" : ""}`}>{value}</span>
+    </div>
   );
 }

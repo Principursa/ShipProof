@@ -1,13 +1,27 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { WagmiProvider } from "wagmi";
+import { WagmiProvider, usePublicClient, useWalletClient } from "wagmi";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import ReactDOM from "react-dom/client";
+import { CofheProvider, createCofheConfig, useCofheAutoConnect } from "@cofhe/react";
+import { arbSepolia } from "@cofhe/sdk/chains";
 
 import Loader from "./components/loader";
 import { routeTree } from "./routeTree.gen";
 import { config } from "./lib/wagmi";
 
 const queryClient = new QueryClient();
+
+const cofheConfig = createCofheConfig({
+  supportedChains: [arbSepolia],
+});
+
+/** Bridges wagmi's wallet/public clients into CofheProvider */
+function CofheAutoConnector({ children }: { children: React.ReactNode }) {
+  const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient();
+  useCofheAutoConnect({ walletClient: walletClient ?? undefined, publicClient });
+  return <>{children}</>;
+}
 
 const router = createRouter({
   routeTree,
@@ -33,7 +47,11 @@ if (!rootElement.innerHTML) {
   root.render(
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <CofheProvider config={cofheConfig} queryClient={queryClient}>
+          <CofheAutoConnector>
+            <RouterProvider router={router} />
+          </CofheAutoConnector>
+        </CofheProvider>
       </QueryClientProvider>
     </WagmiProvider>,
   );

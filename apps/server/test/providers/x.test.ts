@@ -166,5 +166,35 @@ describe("XProvider", () => {
       await provider.fetchMetrics(TOKENS, userId, window);
       expect(callCount).toBe(2);
     });
+
+    it("handles zero tweets in window (empty data array)", async () => {
+      let callCount = 0;
+      globalThis.fetch = mock(async (_url: string | URL | Request) => {
+        callCount += 1;
+        if (callCount === 1) {
+          return new Response(
+            JSON.stringify({
+              data: {
+                id: userId,
+                public_metrics: { tweet_count: 0, followers_count: 50 },
+              },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        // No tweets — API returns no data field
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }) as any;
+
+      const result = await provider.fetchMetrics(TOKENS, userId, window);
+
+      const byKey = Object.fromEntries(result.metrics.map((m) => [m.key, m]));
+      expect(byKey["x_ship_posts"]!.value).toBe(0);
+      expect(byKey["x_tweet_count"]!.value).toBe(0);
+      expect(byKey["x_followers"]!.value).toBe(50);
+    });
   });
 });

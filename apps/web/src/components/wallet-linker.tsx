@@ -5,10 +5,6 @@ import { Check, Loader2 } from "lucide-react";
 import { env } from "@ShipProof/env/web";
 import { fetchAuthStatus } from "@/lib/api";
 
-/**
- * Build the same linking message the server expects.
- * Format: "Link github:userId1, x:userId2 to wallet:0x... nonce:123"
- */
 function buildLinkingMessage(
   providers: Record<string, { userId: string }>,
   walletAddress: string,
@@ -34,15 +30,16 @@ export function WalletLinker({ isLinked, connectedProviders, onLinked }: WalletL
 
   if (isLinked) {
     return (
-      <div className="flex items-center gap-2 text-sm text-green-500">
-        <Check className="h-4 w-4" /> Wallet linked
+      <div className="flex items-center gap-2">
+        <Check className="h-4 w-4 text-primary" />
+        <span className="font-mono text-xs text-primary">Wallet linked</span>
       </div>
     );
   }
 
   if (!address || connectedProviders.length === 0) {
     return (
-      <Button size="sm" disabled>
+      <Button size="sm" disabled className="font-mono text-xs uppercase tracking-wider">
         Link Wallet
       </Button>
     );
@@ -52,7 +49,6 @@ export function WalletLinker({ isLinked, connectedProviders, onLinked }: WalletL
     setIsPending(true);
     setError(null);
     try {
-      // Fetch current session to get provider userIds for the message
       const status = await fetchAuthStatus();
       const nonce = crypto.randomUUID();
       const message = buildLinkingMessage(status.providers, address, nonce);
@@ -80,17 +76,22 @@ export function WalletLinker({ isLinked, connectedProviders, onLinked }: WalletL
   };
 
   return (
-    <div className="space-y-1">
-      <Button size="sm" disabled={isPending} onClick={handleLink}>
+    <div className="space-y-2">
+      <Button
+        size="sm"
+        disabled={isPending}
+        onClick={handleLink}
+        className="font-mono text-xs uppercase tracking-wider"
+      >
         {isPending ? (
           <>
-            <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Signing...
+            <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> Signing…
           </>
         ) : (
           "Sign & Link Wallet"
         )}
       </Button>
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="font-mono text-xs text-destructive">{error}</p>}
     </div>
   );
 }

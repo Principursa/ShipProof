@@ -18,26 +18,21 @@ export function createAuthRouter(baseUrl: string, sessionSecret: string, fronten
     );
   });
 
-  // Initiate OAuth for any provider
-  auth.get("/:providerId", (c) => {
-    const providerId = c.req.param("providerId");
-    if (providerId === "providers" || providerId === "status") return c.notFound();
-    const provider = getProvider(providerId);
-    const state = randomBytes(16).toString("hex");
+  // Current session status
+  auth.get("/status", (c) => {
     const session = getSession(c);
-    session.csrfToken = state;
-    const redirectUri = `${baseUrl}/auth/${provider.id}/callback`;
-    const authResult = provider.getAuthUrl(state, redirectUri);
-    if (typeof authResult === "string") {
-      c.set("session", session);
-      return c.redirect(authResult);
+    const providers: Record<string, { userId: string }> = {};
+    for (const [id, ps] of Object.entries(session.providers)) {
+      providers[id] = { userId: ps.userId };
     }
-    session.pkceVerifier = authResult.pkceVerifier;
-    c.set("session", session);
-    return c.redirect(authResult.url);
+    return c.json({
+      connected: Object.keys(session.providers),
+      providers,
+      wallet: session.wallet?.address ?? null,
+    });
   });
 
-  // Handle OAuth callback
+  // Handle OAuth callback (must be before /:providerId to avoid collision)
   auth.get("/:providerId/callback", async (c) => {
     const providerId = c.req.param("providerId");
     const provider = getProvider(providerId);
@@ -60,18 +55,22 @@ export function createAuthRouter(baseUrl: string, sessionSecret: string, fronten
     return c.redirect(`${frontendUrl}/attest`);
   });
 
-  // Current session status
-  auth.get("/status", (c) => {
+  // Initiate OAuth for any provider
+  auth.get("/:providerId", (c) => {
+    const providerId = c.req.param("providerId");
+    const provider = getProvider(providerId);
+    const state = randomBytes(16).toString("hex");
     const session = getSession(c);
-    const providers: Record<string, { userId: string }> = {};
-    for (const [id, ps] of Object.entries(session.providers)) {
-      providers[id] = { userId: ps.userId };
+    session.csrfToken = state;
+    const redirectUri = `${baseUrl}/auth/${provider.id}/callback`;
+    const authResult = provider.getAuthUrl(state, redirectUri);
+    if (typeof authResult === "string") {
+      c.set("session", session);
+      return c.redirect(authResult);
     }
-    return c.json({
-      connected: Object.keys(session.providers),
-      providers,
-      wallet: session.wallet?.address ?? null,
-    });
+    session.pkceVerifier = authResult.pkceVerifier;
+    c.set("session", session);
+    return c.redirect(authResult.url);
   });
 
   return auth;

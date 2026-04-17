@@ -2,6 +2,23 @@ import { describe, test, expect } from "bun:test";
 import { buildIdentityHash, collectMetrics } from "../../src/attestation/pipeline";
 import { registerProvider } from "../../src/providers/registry";
 import type { MetricProvider } from "../../src/providers/types";
+import { computeSchemaVersion } from "../../src/attestation/encrypt";
+
+const testProvider2: MetricProvider = {
+  id: "test2",
+  displayName: "Test2",
+  requiredScopes: [],
+  getAuthUrl: () => "",
+  exchangeCode: async () => ({ accessToken: "test2" }),
+  getUserId: async () => "user2",
+  fetchMetrics: async (_, userId) => ({
+    providerId: "test2",
+    userId,
+    metrics: [
+      { key: "test2_x", label: "X", value: 10, cap: 50, weight: 3000 },
+    ],
+  }),
+};
 
 const testProvider: MetricProvider = {
   id: "test",
@@ -47,5 +64,43 @@ describe("Attestation pipeline", () => {
     expect(metrics).toHaveLength(2);
     expect(metrics[0]!.key).toBe("test_a");
     expect(metrics[1]!.key).toBe("test_b");
+  });
+
+  test("collectMetrics works with a single provider", async () => {
+    registerProvider(testProvider);
+
+    const sessions = {
+      test: { tokens: { accessToken: "tok" }, userId: "user1" },
+    };
+    const window = { from: new Date("2025-01-01"), to: new Date("2025-12-31") };
+
+    const metrics = await collectMetrics(sessions, window);
+    expect(metrics).toHaveLength(2);
+    expect(metrics.every((m) => m.key.startsWith("test_"))).toBe(true);
+  });
+
+  test("computeSchemaVersion differs for different provider combos", () => {
+    const githubOnly = computeSchemaVersion([
+      "gh_commits",
+      "gh_issues",
+      "gh_prs",
+      "gh_repo_breadth",
+      "gh_reviews",
+    ]);
+
+    const githubPlusX = computeSchemaVersion([
+      "gh_commits",
+      "gh_issues",
+      "gh_prs",
+      "gh_repo_breadth",
+      "gh_reviews",
+      "x_followers",
+      "x_ship_posts",
+      "x_tweet_count",
+    ]);
+
+    expect(githubOnly).not.toBe(githubPlusX);
+    expect(typeof githubOnly).toBe("number");
+    expect(typeof githubPlusX).toBe("number");
   });
 });

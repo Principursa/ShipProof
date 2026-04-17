@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {ShipProofTestHelper} from "./ShipProofTestHelper.sol";
 import {ShipProof, AttestationMeta, MetricConfig, MAX_METRICS} from "../src/ShipProof.sol";
 import {FHE, InEuint32, euint32, euint8, ebool} from "@fhenixprotocol/cofhe-contracts/FHE.sol";
+import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 
 contract ShipProofTest is ShipProofTestHelper {
     address alice = address(0xA11CE);
@@ -78,6 +79,48 @@ contract ShipProofTest is ShipProofTestHelper {
         vm.prank(alice);
         vm.expectRevert(ShipProof.InvalidConfig.selector);
         sp.submitAttestation(meta, configs, inputs, sig);
+    }
+
+    function test_submitAttestation_revert_zeroWeight() public {
+        AttestationMeta memory meta = _makeMeta(alice, 1, 1);
+        MetricConfig[] memory configs = new MetricConfig[](1);
+        configs[0] = MetricConfig({cap: 100, weight: 0});
+        InEuint32[] memory inputs = _makeEncInputs(1, 50, alice);
+        bytes memory sig = _signAttestation(meta, configs, inputs);
+
+        vm.prank(alice);
+        vm.expectRevert(ShipProof.InvalidConfig.selector);
+        sp.submitAttestation(meta, configs, inputs, sig);
+    }
+
+    function test_submitAttestation_revert_invalidSignature() public {
+        AttestationMeta memory meta = _makeMeta(alice, 1, 1);
+        MetricConfig[] memory configs = _makeConfigs(1, 100, 5000);
+        InEuint32[] memory inputs = _makeEncInputs(1, 50, alice);
+
+        // Sign with a random non-oracle key
+        uint256 fakeKey = 0xDEAD;
+        bytes32 structHash = keccak256(abi.encode(
+            sp.ATTESTATION_TYPEHASH(),
+            meta.identityHash,
+            meta.fromTs,
+            meta.toTs,
+            meta.metricCount,
+            meta.metricsVersion,
+            meta.scoringVersion,
+            meta.wallet,
+            meta.oracleNonce,
+            meta.expiresAt,
+            _configHash(configs),
+            _ctInputsHash(inputs)
+        ));
+        bytes32 digest = MessageHashUtils.toTypedDataHash(sp.getDomainSeparator(), structHash);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(fakeKey, digest);
+        bytes memory fakeSig = abi.encodePacked(r, s, v);
+
+        vm.prank(alice);
+        vm.expectRevert(ShipProof.InvalidSignature.selector);
+        sp.submitAttestation(meta, configs, inputs, fakeSig);
     }
 
     function test_submitAttestation_revert_replayNonce() public {
@@ -203,6 +246,29 @@ contract ShipProofTest is ShipProofTestHelper {
         assertTrue(sp.attestationState(id) == ShipProof.AttestationState.PassComputed);
     }
 
+    function test_fullFlow_failingScore() public {
+        // value=10, cap=100, weight=10000 → score=1000, threshold=4000 → fail
+        bytes32 id = _submitAttestation(alice, 1, 10, 100, 10000, 1);
+
+        vm.prank(alice);
+        sp.computeScore(id);
+        euint32 score = sp.getEncScore(id);
+        assertHashValue(score, 1000);
+
+        vm.prank(alice);
+        sp.computePass(id);
+
+        vm.prank(alice);
+        sp.requestPassDecryption(id);
+
+        vm.warp(block.timestamp + 11);
+
+        // Badge mint should revert — score below threshold
+        vm.prank(alice);
+        vm.expectRevert(ShipProof.ScoreBelowThreshold.selector);
+        sp.mintBadge(id);
+    }
+
     // --- Decryption & Badge ---
 
     function test_requestDecryption_and_mintBadge() public {
@@ -314,6 +380,15 @@ contract ShipProofTest is ShipProofTestHelper {
         vm.prank(alice);
         vm.expectRevert(ShipProof.InvalidSlot.selector);
         sp.grantMetricAccess(id, 5, bob);
+    }
+
+    function test_grantScoreAccess_revert_scoreNotComputed() public {
+        // Submit but don't compute score — grantScoreAccess should revert
+        bytes32 id = _submitAttestation(alice, 1, 50, 100, 10000, 1);
+
+        vm.prank(alice);
+        vm.expectRevert(ShipProof.ScoreNotComputed.selector);
+        sp.grantScoreAccess(id, bob);
     }
 
     function test_grantAccess_revert_notOwner() public {
