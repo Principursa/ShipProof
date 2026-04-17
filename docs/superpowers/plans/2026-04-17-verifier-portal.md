@@ -28,6 +28,15 @@ Layer 4:             Task 9 (nav + final wiring)
 
 Tasks within the same layer have no dependencies on each other and CAN run as parallel subagents. Tasks in later layers depend on earlier layers completing first.
 
+### Codex Review Fixes Applied (v2)
+
+1. **`useCofheReadContractAndDecrypt` API**: Hook takes two args — params object and optional `{ readQueryOptions, decryptingQueryOptions }`. Returns `{ encrypted, decrypted, disabledDueToMissingPermit }`. No `error` field or `query` option. Use `readQueryOptions: { enabled }` for conditional reads.
+2. **Post-mint scroll target**: The SelectiveDisclosure on `/attest` (attest.tsx line 89-92) is the correct target, not `/badge/$id`. Task 5 updated to modify `attest.tsx`.
+3. **Verify detail state machine**: VerifyBadgeCard no longer tries to distinguish errors from no-access internally. The verify detail page handles all 7 states explicitly using contract reads + permit state.
+4. **`/verify` lookup**: Renders VerifyBadgeCard per result (reinstating Task 3 dependency). Sorts by reading `toTs` from attestation data.
+5. **`scoreAboveThreshold`**: Uses contract threshold constant (4000), not tier level.
+6. **Missing ABI events**: `ScoreAccessGranted` and `MetricAccessGranted` events added to contracts.ts in Task 1.
+
 ---
 
 ### Task 1: Shared Utilities & Contract Config
@@ -143,12 +152,35 @@ In `packages/env/src/web.ts`, add to the `client` object:
 VITE_DEPLOY_BLOCK: z.string().regex(/^\d+$/).optional(),
 ```
 
-- [ ] **Step 5: Add `DEPLOY_BLOCK` to `apps/web/src/lib/contracts.ts`**
+- [ ] **Step 5: Add `DEPLOY_BLOCK` and missing events to `apps/web/src/lib/contracts.ts`**
 
 Add after the `SHIPPROOF_ADDRESS` export:
 
 ```ts
 export const DEPLOY_BLOCK = BigInt(env.VITE_DEPLOY_BLOCK ?? "0");
+export const PASS_THRESHOLD = 4000; // matches contract deployment config
+```
+
+Add these events to the `shipProofAbi` array (after the existing `BadgeMinted` event):
+
+```ts
+  {
+    type: "event",
+    name: "ScoreAccessGranted",
+    inputs: [
+      { name: "attestationId", type: "bytes32", indexed: true },
+      { name: "grantee", type: "address", indexed: true },
+    ],
+  },
+  {
+    type: "event",
+    name: "MetricAccessGranted",
+    inputs: [
+      { name: "attestationId", type: "bytes32", indexed: true },
+      { name: "slotIndex", type: "uint8", indexed: false },
+      { name: "grantee", type: "address", indexed: true },
+    ],
+  },
 ```
 
 - [ ] **Step 6: Add `VITE_DEPLOY_BLOCK` to `apps/web/.env`**
@@ -458,13 +490,11 @@ export function VerifyBadgeCard({ attestationId, attemptDecrypt = false }: Verif
   const {
     decrypted: decryptedScore,
     disabledDueToMissingPermit,
-    error: decryptError,
   } = useCofheReadContractAndDecrypt({
     address: SHIPPROOF_ADDRESS,
     abi: shipProofAbi,
     functionName: "getEncScore",
-    args: [attestationId],
-    query: { enabled: attemptDecrypt },
+    args: attemptDecrypt ? [attestationId] : undefined,
   });
 
   if (isLoading) return <Skeleton className="h-52 w-full" />;
@@ -500,10 +530,10 @@ export function VerifyBadgeCard({ attestationId, attemptDecrypt = false }: Verif
         <Lock className="h-3 w-3" /> Encrypted
       </span>
     );
-  } else if (decryptError) {
+  } else if (decryptedScore.isError) {
     scoreContent = (
       <span className="flex items-center gap-1.5 font-mono text-xs text-destructive">
-        <AlertCircle className="h-3 w-3" /> Error decrypting
+        <AlertCircle className="h-3 w-3" /> Error decrypting — try again
       </span>
     );
   } else if (decryptedScore.isLoading) {
@@ -872,6 +902,7 @@ git commit -m "simplify share flow with default score sharing and share link"
 
 **Files:**
 - Modify: `apps/web/src/components/attestation-stepper.tsx`
+- Modify: `apps/web/src/routes/attest.tsx`
 
 **Depends on:** Task 1 (errors.ts import already done in Task 1 Step 7). Can run in parallel with Tasks 3, 4.
 
@@ -909,30 +940,26 @@ In `attestation-stepper.tsx`, find the `step === "done"` block (around line 194-
       )}
 ```
 
-- [ ] **Step 2: Add scroll target ID to SelectiveDisclosure on the badge page**
+- [ ] **Step 2: Add scroll target ID to SelectiveDisclosure on the attest page**
 
-In `apps/web/src/routes/badge.$id.tsx`, wrap the `SelectiveDisclosure` in a div with an id:
+The SelectiveDisclosure is rendered on `/attest` (in `apps/web/src/routes/attest.tsx`, around line 89-92), NOT on `/badge/$id`. Wrap it with an ID.
 
-Find:
+In `apps/web/src/routes/attest.tsx`, find:
 ```tsx
-        {metricCount > 0 && (
-          <SelectiveDisclosure
-            attestationId={attestationId}
-            metricCount={metricCount}
-          />
-        )}
+            <SelectiveDisclosure
+              attestationId={completedAttestationId}
+              metricCount={8}
+            />
 ```
 
 Replace with:
 ```tsx
-        {metricCount > 0 && (
-          <div id="selective-disclosure">
-            <SelectiveDisclosure
-              attestationId={attestationId}
-              metricCount={metricCount}
-            />
-          </div>
-        )}
+            <div id="selective-disclosure">
+              <SelectiveDisclosure
+                attestationId={completedAttestationId}
+                metricCount={8}
+              />
+            </div>
 ```
 
 - [ ] **Step 3: Verify the build compiles**
@@ -943,7 +970,7 @@ Expected: No type errors.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add apps/web/src/components/attestation-stepper.tsx apps/web/src/routes/badge.\$id.tsx
+git add apps/web/src/components/attestation-stepper.tsx apps/web/src/routes/attest.tsx
 git commit -m "add post-mint prompt to share with verifier"
 ```
 
@@ -969,6 +996,7 @@ import { Label } from "@ShipProof/ui/components/label";
 import { Loader2, Search } from "lucide-react";
 import { isAddress } from "viem";
 import { SHIPPROOF_ADDRESS, DEPLOY_BLOCK } from "@/lib/contracts";
+import { VerifyBadgeCard } from "@/components/verify-badge-card";
 import { env } from "@ShipProof/env/web";
 
 export const Route = createFileRoute("/verify")({
@@ -1108,14 +1136,7 @@ function VerifyPage() {
                       Latest
                     </span>
                   )}
-                  <div className="border border-border bg-card p-4 hover:bg-accent/40 transition-colors">
-                    <p className="font-mono text-xs truncate">
-                      {badge.attestationId}
-                    </p>
-                    <p className="mt-1 font-mono text-[10px] text-muted-foreground">
-                      Click to view details
-                    </p>
-                  </div>
+                  <VerifyBadgeCard attestationId={badge.attestationId} />
                 </div>
               </Link>
             ))}
@@ -1287,25 +1308,12 @@ function VerifyDetailPage() {
               </div>
             )}
 
-            {/* State C: Need permit */}
+            {/* State C: Need permit — PermitGate handles missing/expired */}
             {isConnected && isOnCorrectChain && (
               <PermitGate action="verifying this attestation">
                 {/* State D/E: PermitGate children render when permit is ready */}
-                {/* Score access result is shown in the VerifyBadgeCard itself */}
-                <div className="border border-primary/10 bg-accent/20 p-4 space-y-2">
-                  <p className="font-mono text-[10px] text-muted-foreground">
-                    Permit active. If the candidate shared their score with your
-                    wallet, it will appear above.
-                  </p>
-                  {address && (
-                    <p className="font-mono text-[10px] text-muted-foreground">
-                      Your wallet:{" "}
-                      <code className="rounded bg-muted px-1.5 py-0.5">
-                        {address}
-                      </code>
-                    </p>
-                  )}
-                </div>
+                {/* VerifyBadgeCard handles decryption and shows score or "No access" */}
+                <VerifyDetailStatus attestationId={id} />
               </PermitGate>
             )}
           </>
@@ -1314,6 +1322,97 @@ function VerifyDetailPage() {
     </div>
   );
 }
+
+/**
+ * Subcomponent rendered inside PermitGate (only when permit is active).
+ * Distinguishes State D (no access) from State E (access granted) and handles errors.
+ */
+function VerifyDetailStatus({ attestationId }: { attestationId: `0x${string}` }) {
+  const { address } = useAccount();
+  const {
+    decrypted: decryptedScore,
+    disabledDueToMissingPermit,
+  } = useCofheReadContractAndDecrypt({
+    address: SHIPPROOF_ADDRESS,
+    abi: shipProofAbi,
+    functionName: "getEncScore",
+    args: [attestationId],
+  });
+
+  // Error state — RPC/coprocessor failure, NOT access denial
+  if (decryptedScore.isError) {
+    return (
+      <div className="border border-destructive/20 bg-destructive/5 p-4 space-y-2">
+        <p className="font-mono text-[11px] text-destructive">
+          Something went wrong verifying this attestation. Please try again.
+        </p>
+        <Button
+          size="xs"
+          variant="outline"
+          onClick={() => decryptedScore.refetch()}
+          className="font-mono text-[10px] uppercase tracking-[0.15em]"
+        >
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  // Loading
+  if (decryptedScore.isLoading) {
+    return (
+      <div className="border border-border/50 p-4 text-center">
+        <Loader2 className="mx-auto h-4 w-4 animate-spin text-muted-foreground" />
+        <p className="mt-2 font-mono text-[10px] text-muted-foreground">
+          Checking access...
+        </p>
+      </div>
+    );
+  }
+
+  // State E: Access granted — score is shown in the VerifyBadgeCard above
+  if (decryptedScore.data != null) {
+    return (
+      <div className="border border-primary/10 bg-accent/20 p-4">
+        <p className="font-mono text-[10px] text-primary">
+          Score decrypted successfully. See results above.
+        </p>
+      </div>
+    );
+  }
+
+  // State D: No access granted
+  return (
+    <div className="border border-dashed border-border p-5 space-y-3">
+      <p className="text-sm text-muted-foreground">
+        This candidate hasn't shared their score with your wallet yet.
+      </p>
+      <p className="font-mono text-[10px] text-muted-foreground">
+        Send them your wallet address so they can grant you access:
+      </p>
+      {address && (
+        <code className="block rounded bg-muted px-3 py-2 font-mono text-xs break-all">
+          {address}
+        </code>
+      )}
+      <Link to="/" className="inline-block">
+        <Button
+          variant="link"
+          size="xs"
+          className="font-mono text-[10px] uppercase tracking-[0.15em] px-0"
+        >
+          Learn how ShipProof works
+        </Button>
+      </Link>
+    </div>
+  );
+}
+```
+
+Add these additional imports at the top of the file (alongside the existing ones):
+```ts
+import { useCofheReadContractAndDecrypt } from "@cofhe/react";
+import { Loader2 } from "lucide-react";
 ```
 
 - [ ] **Step 2: Verify the build compiles**
@@ -1363,6 +1462,7 @@ export function buildReceiptPayload(params: {
   attestationId: string;
   candidateWallet: string;
   verifierWallet: string;
+  score: number;
   tier: TierInfo;
   fromTs: number;
   toTs: number;
@@ -1374,7 +1474,7 @@ export function buildReceiptPayload(params: {
     candidateWallet: params.candidateWallet,
     verifierWallet: params.verifierWallet,
     tier: params.tier.label,
-    scoreAboveThreshold: params.tier.level >= 1, // Silver or above
+    scoreAboveThreshold: params.score >= 4000, // matches contract THRESHOLD
     attestationPeriod: { from: params.fromTs, to: params.toTs },
     verifiedAt: new Date().toISOString(),
   };
@@ -1503,6 +1603,7 @@ Then add a receipt download section at the bottom of the card, after the data ro
                     attestationId,
                     candidateWallet: receiptData.candidateWallet,
                     verifierWallet: verifierAddress,
+                    score: receiptData.score,
                     tier: receiptData.tier,
                     fromTs: receiptData.fromTs,
                     toTs: receiptData.toTs,
