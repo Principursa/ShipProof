@@ -1,7 +1,9 @@
-import { useCofheActivePermit, useCofheAllPermits, useCofheSelectPermit, useCofheRemovePermit, useCofheNavigateToCreatePermit, useCofheConnection } from "@cofhe/react";
+import { useState } from "react";
+import { useCofheActivePermit, useCofheAllPermits, useCofheSelectPermit, useCofheRemovePermit, useCofheClient, useCofheConnection } from "@cofhe/react";
+import { useAccount } from "wagmi";
 import type { Permit } from "@cofhe/sdk/permits";
 import { Button } from "@ShipProof/ui/components/button";
-import { Key, RefreshCw } from "lucide-react";
+import { Key, RefreshCw, Loader2 } from "lucide-react";
 
 type PermitGateStatus = "ready" | "missing" | "expired" | "disconnected";
 
@@ -20,9 +22,25 @@ export function PermitGate({ children, action = "this action" }: PermitGateProps
   const allPermits = useCofheAllPermits();
   const selectPermit = useCofheSelectPermit({});
   const removePermit = useCofheRemovePermit({});
-  const navigateToCreate = useCofheNavigateToCreatePermit();
+  const client = useCofheClient();
+  const { address } = useAccount();
   const connection = useCofheConnection();
   const status = getPermitStatus(active, connection.connected);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleCreate = async () => {
+    setCreating(true);
+    setError(null);
+    try {
+      await client.permits.createSelf({ issuer: address! });
+    } catch (err) {
+      console.error("Permit creation failed:", err);
+      setError(err instanceof Error ? err.message : "Failed to create permit");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   if (status === "ready") return <>{children}</>;
 
@@ -47,8 +65,8 @@ export function PermitGate({ children, action = "this action" }: PermitGateProps
             </div>
           </div>
           <div className="flex gap-2">
-            <Button size="xs" onClick={() => navigateToCreate({})} className="font-mono text-[10px] uppercase tracking-[0.15em]">
-              Create Permit
+            <Button size="xs" onClick={handleCreate} disabled={creating} className="font-mono text-[10px] uppercase tracking-[0.15em]">
+              {creating ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> Creating…</> : "Create Permit"}
             </Button>
             {allPermits.length > 0 && (
               <Button size="xs" variant="outline" onClick={() => selectPermit(allPermits[0].hash)} className="font-mono text-[10px] uppercase tracking-[0.15em]">
@@ -56,6 +74,7 @@ export function PermitGate({ children, action = "this action" }: PermitGateProps
               </Button>
             )}
           </div>
+          {error && <p className="font-mono text-[10px] text-destructive">{error}</p>}
         </>
       )}
 
@@ -71,8 +90,8 @@ export function PermitGate({ children, action = "this action" }: PermitGateProps
             </div>
           </div>
           <div className="flex gap-2">
-            <Button size="xs" onClick={() => navigateToCreate({})} className="font-mono text-[10px] uppercase tracking-[0.15em]">
-              Create New
+            <Button size="xs" onClick={handleCreate} disabled={creating} className="font-mono text-[10px] uppercase tracking-[0.15em]">
+              {creating ? <><Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> Creating…</> : "Create New"}
             </Button>
             {active?.permit && (
               <Button size="xs" variant="ghost" onClick={() => removePermit(active.permit.hash)} className="font-mono text-[10px] uppercase tracking-[0.15em]">
@@ -80,6 +99,7 @@ export function PermitGate({ children, action = "this action" }: PermitGateProps
               </Button>
             )}
           </div>
+          {error && <p className="font-mono text-[10px] text-destructive">{error}</p>}
         </>
       )}
     </div>

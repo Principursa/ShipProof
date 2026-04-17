@@ -1,11 +1,36 @@
 import { useState, useEffect, useCallback } from "react";
-import { useAccount, useWriteContract, useReadContract, usePublicClient } from "wagmi";
-import { decodeEventLog } from "viem";
+import { useAccount, useWriteContract, useReadContract, useSwitchChain } from "wagmi";
+import { createPublicClient, http, toEventSelector } from "viem";
+import { arbitrumSepolia } from "wagmi/chains";
 import { Button } from "@ShipProof/ui/components/button";
 import { Check, Loader2 } from "lucide-react";
 import { postAttest, type AttestationEnvelope } from "@/lib/api";
 import { shipProofAbi, SHIPPROOF_ADDRESS, AttestationState } from "@/lib/contracts";
+import { env } from "@ShipProof/env/web";
 import { PermitGate } from "./permit-gate";
+
+/** Dedicated Arbitrum Sepolia client — never affected by wallet chain state */
+const arbSepoliaClient = createPublicClient({
+  chain: arbitrumSepolia,
+  transport: http(env.VITE_ARB_SEPOLIA_RPC_URL),
+});
+
+/** Extract a short, user-friendly message from viem/wagmi errors. */
+function friendlyError(err: unknown): string {
+  if (!(err instanceof Error)) return "Transaction failed";
+  const msg = err.message;
+  if (msg.includes("User rejected")) return "Transaction rejected";
+  if (msg.includes("User denied")) return "Transaction rejected";
+  if (msg.includes("ScoreBelowThreshold")) return "Score below threshold";
+  if (msg.includes("NonceAlreadyUsed")) return "Attestation already submitted — nonce reused";
+  if (msg.includes("AttestationExpired")) return "Attestation expired — please retry";
+  if (msg.includes("InvalidSignature")) return "Invalid oracle signature";
+  if (msg.includes("insufficient funds")) return "Insufficient funds for gas";
+  // Fallback: take first line only, strip technical details
+  const firstLine = msg.split("\n")[0] ?? msg;
+  if (firstLine.length > 120) return firstLine.slice(0, 120) + "…";
+  return firstLine;
+}
 
 type FlowStep = "idle" | "fetching" | "submit" | "computeScore" | "computePass" | "decrypt" | "mint" | "done" | "failed";
 
@@ -28,13 +53,19 @@ function saveState(state: SavedState) { localStorage.setItem("shipproof_attestat
 function clearState() { localStorage.removeItem("shipproof_attestation"); }
 
 export function AttestationStepper({ onComplete }: { onComplete?: (attestationId: `0x${string}`) => void } = {}) {
-  const { address } = useAccount();
-  const publicClient = usePublicClient();
+  const { address, chainId } = useAccount();
   const [step, setStep] = useState<FlowStep>("idle");
   const [attestationId, setAttestationId] = useState<`0x${string}` | null>(null);
   const [envelope, setEnvelope] = useState<AttestationEnvelope | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { writeContractAsync } = useWriteContract();
+  const { switchChainAsync } = useSwitchChain();
+
+  const ensureChain = useCallback(async () => {
+    if (chainId !== arbitrumSepolia.id) {
+      await switchChainAsync({ chainId: arbitrumSepolia.id });
+    }
+  }, [chainId, switchChainAsync]);
 
   useEffect(() => { const saved = loadSavedState(); if (saved?.attestationId) { setAttestationId(saved.attestationId as `0x${string}`); setStep(saved.step); } }, []);
   useEffect(() => { if (attestationId && step !== "idle") saveState({ attestationId, step }); }, [attestationId, step]);
@@ -65,31 +96,55 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
     if (!envelope || !address) return;
     setError(null);
     try {
+      await ensureChain();
       const meta = { identityHash: envelope.meta.identityHash as `0x${string}`, fromTs: BigInt(envelope.meta.fromTs), toTs: BigInt(envelope.meta.toTs), metricCount: envelope.meta.metricCount, metricsVersion: envelope.meta.metricsVersion, scoringVersion: envelope.meta.scoringVersion, wallet: envelope.meta.wallet as `0x${string}`, oracleNonce: BigInt(envelope.meta.oracleNonce), expiresAt: BigInt(envelope.meta.expiresAt) };
       const configs = envelope.configs.map((c) => ({ cap: c.cap, weight: c.weight }));
       const encInputs = envelope.encryptedInputs.map((inp) => ({ ctHash: BigInt(inp.ctHash), securityZone: inp.securityZone, utype: inp.utype, signature: inp.signature as `0x${string}` }));
-      const hash = await writeContractAsync({ address: SHIPPROOF_ADDRESS, abi: shipProofAbi, functionName: "submitAttestation", args: [meta, configs, encInputs, envelope.signature as `0x${string}`] });
-      const receipt = await publicClient!.waitForTransactionReceipt({ hash });
-      const attestedLog = receipt.logs.find((log) => { try { return decodeEventLog({ abi: shipProofAbi, data: log.data, topics: log.topics }).eventName === "Attested"; } catch { return false; } });
-      if (!attestedLog) throw new Error("Attested event not found");
-      const decoded = decodeEventLog({ abi: shipProofAbi, data: attestedLog.data, topics: attestedLog.topics });
-      setAttestationId((decoded.args as { attestationId: `0x${string}` }).attestationId);
-      setStep("computeScore");
-    } catch (err) { setError(err instanceof Error ? err.message : "Transaction failed"); }
-  }, [envelope, address, writeContractAsync, publicClient]);
+      const hash = await writeContractAsync({ chainId: arbitrumSepolia.id, address: SHIPPROOF_ADDRESS, abi: shipProofAbi, functionName: "submitAttestation", args: [meta, configs, encInputs, envelope.signature as `0x${string}`] });
+      console.log("[ShipProof] tx hash:", hash);
+      const receipt = await arbSepoliaClient.waitForTransactionReceipt({ hash, confirmations: 2 });
+      console.log("[ShipProof] receipt status:", receipt.status, "logs:", receipt.logs.length, "blockNumber:", receipt.blockNumber.toString());
+      if (receipt.status === "reverted") {
+        setError("Transaction reverted on-chain");
+        return;
+      }
+      // Find Attested event — match by topic0
+      const ATTESTED_TOPIC = toEventSelector("Attested(bytes32,address,uint8,uint32,uint32)");
+      const attestedLog = receipt.logs.find((log) => log.topics[0] === ATTESTED_TOPIC);
+      if (attestedLog?.topics[1]) {
+        setAttestationId(attestedLog.topics[1] as `0x${string}`);
+        setStep("computeScore");
+      } else {
+        // Fallback: fetch receipt again via RPC in case logs were missing
+        console.warn("[ShipProof] No Attested log found, retrying receipt fetch...");
+        const retryReceipt = await arbSepoliaClient.getTransactionReceipt({ hash });
+        console.log("[ShipProof] retry receipt logs:", retryReceipt.logs.length);
+        const retryLog = retryReceipt.logs.find((log) => log.topics[0] === ATTESTED_TOPIC);
+        if (retryLog?.topics[1]) {
+          setAttestationId(retryLog.topics[1] as `0x${string}`);
+          setStep("computeScore");
+        } else {
+          console.warn("[ShipProof] Full retry receipt:", JSON.stringify(retryReceipt, (_, v) => typeof v === "bigint" ? v.toString() : v));
+          setError("Transaction confirmed but no events emitted — tx may have reverted internally");
+        }
+      }
+    } catch (err) { console.error(err); setError(friendlyError(err)); }
+  }, [envelope, address, ensureChain, writeContractAsync]);
 
   const callContractStep = useCallback(async (functionName: "computeScore" | "computePass" | "requestPassDecryption" | "mintBadge", nextStep: FlowStep) => {
     if (!attestationId) return;
     setError(null);
     try {
-      await writeContractAsync({ address: SHIPPROOF_ADDRESS, abi: shipProofAbi, functionName, args: [attestationId] });
+      await ensureChain();
+      await writeContractAsync({ chainId: arbitrumSepolia.id, address: SHIPPROOF_ADDRESS, abi: shipProofAbi, functionName, args: [attestationId] });
       if (nextStep === "done") { clearState(); onComplete?.(attestationId); }
       setStep(nextStep);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Transaction failed";
-      if (msg.includes("ScoreBelowThreshold")) { setStep("failed"); clearState(); } else setError(msg);
+      console.error(err);
+      const msg = friendlyError(err);
+      if (msg.includes("threshold")) { setStep("failed"); clearState(); } else setError(msg);
     }
-  }, [attestationId, writeContractAsync, onComplete]);
+  }, [attestationId, ensureChain, writeContractAsync, onComplete]);
 
   const currentStepIndex = STEP_ORDER.indexOf(step);
 

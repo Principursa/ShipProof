@@ -68,9 +68,10 @@ export async function buildAttestation(
   }
   const identityHash = buildIdentityHash(identitySalt, providerUserIds);
 
-  // 3. Encrypt metrics
+  // 3. Encrypt metrics (bound to the user's wallet for on-chain verifyInput)
   const { encryptedInputs, ctInputsHash } = await encryptMetrics(
     allMetrics.map((m) => m.value),
+    wallet,
   );
 
   // 4. Build configs

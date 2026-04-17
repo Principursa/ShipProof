@@ -9,18 +9,19 @@ export function ProviderConnector() {
   const { data: providers, isLoading: loadingProviders } = useQuery({
     queryKey: ["providers"],
     queryFn: fetchProviders,
+    staleTime: Infinity,
   });
 
-  const { data: status, isLoading: loadingStatus } = useQuery({
+  const { data: status } = useQuery({
     queryKey: ["auth-status"],
     queryFn: fetchAuthStatus,
     refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   });
 
-  if (loadingProviders || loadingStatus) {
+  if (loadingProviders) {
     return (
       <div className="space-y-2">
-        <Skeleton className="h-11 w-full" />
         <Skeleton className="h-11 w-full" />
       </div>
     );

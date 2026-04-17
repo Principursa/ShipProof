@@ -27,16 +27,23 @@ export function hashCtInputs(encryptedInputs: InEuint32Like[]): `0x${string}` {
   const encodedParts = encryptedInputs.map((inp) =>
     encodeAbiParameters(
       [
-        { type: "uint256" },
-        { type: "uint8" },
-        { type: "uint8" },
-        { type: "bytes" },
+        {
+          type: "tuple",
+          components: [
+            { type: "uint256", name: "ctHash" },
+            { type: "uint8", name: "securityZone" },
+            { type: "uint8", name: "utype" },
+            { type: "bytes", name: "signature" },
+          ],
+        },
       ],
       [
-        BigInt(inp.ctHash),
-        inp.securityZone,
-        inp.utype,
-        inp.signature as `0x${string}`,
+        {
+          ctHash: BigInt(inp.ctHash),
+          securityZone: inp.securityZone,
+          utype: inp.utype,
+          signature: inp.signature as `0x${string}`,
+        },
       ],
     ),
   );
@@ -60,6 +67,7 @@ export interface InEuint32Like {
  */
 export async function encryptMetrics(
   values: number[],
+  senderAddress: string,
 ): Promise<{ encryptedInputs: InEuint32Like[]; ctInputsHash: `0x${string}` }> {
   const { Encryptable } = await import("@cofhe/sdk");
   const client = (globalThis as any).__cofheClient;
@@ -68,7 +76,7 @@ export async function encryptMetrics(
   }
 
   const items = values.map((v) => Encryptable.uint32(BigInt(v)));
-  const encrypted = await client.encryptInputs(items).execute();
+  const encrypted = await client.encryptInputs(items).setAccount(senderAddress).execute();
 
   const encryptedInputs = encrypted as unknown as InEuint32Like[];
   const ctInputsHash = hashCtInputs(encryptedInputs);
