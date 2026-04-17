@@ -1,7 +1,7 @@
 # Verifier Portal & Narrative Reframe — Design Spec
 
 **Date:** 2026-04-17
-**Status:** Draft
+**Status:** Draft (v2 — post-Codex review)
 **Wave:** 3 (deadline 2026-05-08)
 **Goal:** Boost Market Potential (5→7+), Innovation (6→7+), and UX (6→7+) scores by making the buyer, use case, and decision flow immediately legible.
 
@@ -28,10 +28,10 @@ Replace the current single-hero layout with two side-by-side cards:
 - CTA: "Get Attested" → `/attest`
 
 **Right card — "I'm hiring / verifying"**
-- Copy: "Verify a candidate's track record privately. See scores and tiers they've shared with you — nothing more."
+- Copy: "Verify a candidate's track record privately. See only the scores and tiers they've chosen to share with you."
 - CTA: "Verify a Candidate" → `/verify`
 
-Below the fold: existing 3-step explainer (Attest → Score → Prove) reworded to reference both sides. The "Prove" step becomes "Verify" with copy: "Candidates share their encrypted score with you. You decrypt it with your wallet. The chain sees nothing."
+Below the fold: existing 3-step explainer (Attest → Score → Prove) reworded to reference both sides. The "Prove" step becomes "Verify" with copy: "Candidates share their encrypted score with you. You decrypt it with your wallet. The chain records that a share happened — but never what was shared."
 
 FHE value prop section stays but reframed: "Zero-knowledge proofs can only say yes or no. With ShipProof, verifiers see the actual score and tier the candidate chose to share — without exposing the underlying metrics or accounts."
 
@@ -54,9 +54,12 @@ FHE value prop section stays but reframed: "Zero-knowledge proofs can only say y
 - No indexer or subgraph required — direct RPC log query is sufficient for testnet volume
 
 **Results:**
-- List of badge cards showing public metadata for each attestation
+- List of badge cards showing public metadata for each attestation, sorted by `toTs` descending (newest first)
+- Most recent badge highlighted as "Latest"
 - Each card links to `/verify/{attestationId}`
 - Empty state: "No ShipProof badges found for this address"
+
+**Multiple attestations:** A wallet can have multiple badges (e.g., different time windows, different provider sets). The lookup shows all of them. The most recent by attestation period (`toTs`) is marked "Latest" and shown first. Historical badges are shown below with their period for context. The screener picks which one to verify.
 
 **Implementation:**
 ```ts
@@ -69,63 +72,124 @@ const logs = await publicClient.getLogs({
 })
 ```
 
-Note: The `tier` field in the event is a placeholder value (1) — actual tier is computed via `computeTier()` and derived client-side from the decrypted score.
+Note: The `tier` field in the event is a placeholder value (1) — actual tier is derived client-side from the decrypted score.
 
-`DEPLOY_BLOCK` is hardcoded as a constant in `contracts.ts` (the block number of the ShipProof contract deployment).
+`DEPLOY_BLOCK` is sourced from env var `VITE_DEPLOY_BLOCK` (not hardcoded) to survive redeployments.
 
 ### 3.3 — `/verify/$attestationId` — Verification Detail
 
-**Three states:**
+This page works for **any attestation ID** — it reads attestation data directly from `attestations(attestationId)` on the contract, not from badge events. This means share links work even if the badge hasn't been minted yet (score sharing is possible from state `ScoreComputed` onward).
+
+**Five states:**
 
 #### State A: No wallet connected (teaser)
 - Badge card showing public metadata:
-  - Badge status: "Minted"
+  - Attestation status: "Badge Minted" or "Score Computed" (read from `attestationState`)
   - Attestation period (fromTs – toTs, read from `attestations(attestationId)`)
-  - Provider icons (derived from metricsVersion → known provider set)
-  - Metric count: "8 metrics across 2 providers"
+  - Provider categories (derived from metricsVersion — see Section 3.5)
+  - Metric count (read from attestation metadata)
 - Locked score display with visual treatment (shimmer/pulse):
   - "Score shared with you — connect wallet to reveal"
 - CTA: "Connect Wallet"
 
-#### State B: Wallet connected, no access granted
+#### State B: Wallet connected, wrong chain
 - Same public metadata as State A
+- "Please switch to Arbitrum Sepolia to verify this attestation"
+- Chain switch button via `useSwitchChain`
+
+#### State C: Wallet connected, no permit
+- Same public metadata as State A
+- `PermitGate` component handles permit creation
+- States: missing permit → "Create Permit" button; expired permit → "Renew Permit" button
+
+#### State D: Wallet connected + permit, no access granted
+- Same public metadata
 - Friendly message (not an error):
   - "This candidate hasn't shared their score with your wallet yet."
   - "Send them your wallet address so they can grant you access:"
   - Copyable display of the screener's connected wallet address
   - Link: "Learn how ShipProof works" → `/`
 
-#### State C: Wallet connected, access granted
+#### State E: Wallet connected + permit, access granted
 - Public metadata
 - Decrypted score displayed prominently (e.g., "7,200 / 10,000")
 - Tier badge derived client-side: Bronze / Silver / Gold / Diamond
 - Provider categories (not specific values): "Includes code activity and social metrics"
 - Attestation date and wallet address for reference
+- **Verification receipt** (see Section 3.6)
+- If attestation period is older than 90 days: subtle "Stale attestation" note — "This score covers {fromTs}–{toTs}. Consider requesting a fresh attestation."
 
 **Access detection:**
-- Connect wallet → create CoFHE permit via `PermitGate`
+- Connect wallet → ensure correct chain → create CoFHE permit via `PermitGate`
 - Read `getEncScore(attestationId)` → attempt decryption via `useCofheReadContractAndDecrypt`
-- If decryption succeeds → State C
-- If decryption fails (no FHE.allow grant) → State B
+- If decryption succeeds → State E
+- If decryption fails (no FHE.allow grant) → State D
+
+**Edge case — metric access without score access:**
+- If a screener has been granted per-metric access but not score access, show State D (no score) with a note: "You have access to individual metrics but not the overall score. Ask the candidate to share their score for a complete picture."
 
 ### 3.4 — Privacy Model for Verifiers
 
-**What the screener can see:**
-- Score (aggregate, weighted composite) — if granted
+**Public metadata (visible to anyone, on-chain):**
+- Attestation exists (attestation ID, state)
+- Attestation period (fromTs, toTs)
+- Metric count and metricsVersion hash
+- Badge minted status
+- `ScoreAccessGranted` / `MetricAccessGranted` events (grantee address is public)
+- The fact that a share happened is visible; the content of what was shared is not
+
+**What the screener can see (requires FHE grant + permit):**
+- Score (aggregate, weighted composite) — if granted via `grantScoreAccess`
 - Tier (derived client-side from score) — if score granted
-- Provider categories ("code activity", "social metrics") — always visible (public metadata)
-- Attestation period and metric count — always visible (public metadata)
+- Individual metric values (if granted via `grantMetricAccess`) — advanced, attester-initiated only
 
 **What the screener CANNOT see:**
-- Individual metric values (commits, PRs, followers, etc.)
+- Individual metric values (unless explicitly granted by attester)
 - Provider account identities (GitHub username, X handle)
 - Other candidates' data
+- The scoring formula weights or caps (on-chain but not surfaced in UI)
 
-**Per-metric disclosure (advanced, attester-initiated):**
-- The existing `grantMetricAccess` contract function remains available
-- Gated behind a privacy warning on the attester's badge page: "Sharing individual metrics may make your accounts identifiable"
-- Not surfaced in the verifier portal default view
-- If a screener has been granted per-metric access, individual values appear in an expandable "Detailed Metrics" section without provider-specific labels (shown as "Metric 1", "Metric 2", etc.)
+**Honest privacy boundary:** The grant events are public. An observer can see *that* wallet A shared something with wallet B, and *when*. They cannot see *what* was shared (score value, tier, metrics). This is a meaningful privacy property for the hiring use case — the employer-candidate relationship is visible, but the evaluation content is not.
+
+### 3.5 — Provider Category Mapping
+
+`metricsVersion` is a 4-byte hash of sorted metric keys. To show human-readable provider categories on the verifier page, we maintain a static lookup map in the frontend:
+
+```ts
+const METRICS_VERSION_MAP: Record<string, { providers: string[]; metricCount: number }> = {
+  '0xABCD1234': { providers: ['github', 'x'], metricCount: 8 },
+  // Add new entries when provider set changes
+}
+```
+
+**Fallback:** If `metricsVersion` is not in the map, show generic "Multiple providers" with the raw metric count. This avoids breaking on unknown versions.
+
+**Trade-off:** This is a hardcoded registry. It breaks silently if new providers are added without updating the map. Acceptable for the buildathon — a server-side schema endpoint is the proper solution but out of scope (see Section 8).
+
+### 3.6 — Verification Receipt
+
+After the screener decrypts a score (State E), offer a **client-side signed verification receipt**:
+
+**"Download Verification Receipt" button** generates a JSON object:
+```json
+{
+  "type": "ShipProofVerification",
+  "version": 1,
+  "attestationId": "0x...",
+  "candidateWallet": "0x...",
+  "verifierWallet": "0x...",
+  "tier": "Gold",
+  "scoreAboveThreshold": true,
+  "attestationPeriod": { "from": 1704067200, "to": 1711929600 },
+  "verifiedAt": "2026-04-17T12:00:00Z"
+}
+```
+
+The receipt is signed by the screener's wallet (EIP-191 personal sign) so it's attributable but not forgeable. It does NOT include the raw score — only the tier and a boolean "above threshold."
+
+**Why this matters:** It turns a browser-session verification into a portable artifact. The screener can attach it to a hiring decision, save it to a DAO proposal, or reference it later. No contract change needed — purely client-side.
+
+**Privacy note:** The receipt intentionally omits the numeric score. Tier + boolean is sufficient for hiring decisions and prevents score values from leaking into external systems.
 
 ---
 
@@ -137,6 +201,8 @@ Note: The `tier` field in the event is a placeholder value (1) — actual tier i
 1. "Share score with verifier" — single address input + one button
 2. Executes `grantScoreAccess(attestationId, granteeAddress)`
 3. On success: display copyable share link `shipproof.lol/verify/{attestationId}`
+
+**Flow clarification:** The share link is a convenience locator. Access is wallet-specific — the builder must grant access to the screener's specific wallet address first. The link just directs the screener to the right page. The sequence is: builder enters screener's wallet → grants access (on-chain tx) → copies share link → sends link to screener out-of-band.
 
 **Advanced toggle (collapsed by default):**
 - "Share individual metrics (may reduce anonymity)"
@@ -178,15 +244,18 @@ These thresholds are documented here as the single source of truth. If the contr
 | `apps/web/src/routes/verify.$attestationId.tsx` | Verification detail page |
 | `apps/web/src/components/verify-badge-card.tsx` | Badge card for verifier view (public metadata + locked/unlocked score + tier) |
 | `apps/web/src/lib/tier.ts` | `deriveTier()` utility |
+| `apps/web/src/lib/errors.ts` | Extracted `friendlyError()` shared utility |
+| `apps/web/src/lib/metrics-version.ts` | `METRICS_VERSION_MAP` and lookup helper |
 
 ### Modified files:
 | File | Change |
 |---|---|
 | `apps/web/src/routes/index.tsx` | Dual-persona hero, updated copy |
-| `apps/web/src/routes/__root.tsx` | Add `/verify` to nav if needed |
+| `apps/web/src/routes/__root.tsx` | Add `/verify` to nav |
 | `apps/web/src/components/selective-disclosure.tsx` | Simplified default share, copy link, advanced toggle with privacy warning |
-| `apps/web/src/components/attestation-stepper.tsx` | Post-mint prompt to share |
-| `apps/web/src/lib/contracts.ts` | Add `DEPLOY_BLOCK` constant, verify `getEncTier` in ABI |
+| `apps/web/src/components/attestation-stepper.tsx` | Post-mint prompt to share; import `friendlyError` from shared util |
+| `apps/web/src/lib/contracts.ts` | Add `DEPLOY_BLOCK` from env var, verify ABI exports |
+| `apps/web/.env` | Add `VITE_DEPLOY_BLOCK` |
 
 ### No changes:
 - No smart contract modifications
@@ -200,11 +269,11 @@ These thresholds are documented here as the single source of truth. If the contr
 
 | Existing Component | Reused In |
 |---|---|
-| `PermitGate` | Verify detail page (decrypt flow) |
+| `PermitGate` | Verify detail page (decrypt flow, handles missing/expired/disconnected) |
 | `BadgeDisplay` | Reference for `VerifyBadgeCard` (not directly reused — verifier view is simpler) |
-| `friendlyError()` | All new pages |
+| `friendlyError()` | Extracted to shared util, used by all pages |
 | `useCofheReadContractAndDecrypt` | Verify detail page (score decryption) |
-| wagmi `useAccount`, `useConnect` | Verify pages (wallet connection) |
+| wagmi `useAccount`, `useConnect`, `useSwitchChain` | Verify pages (wallet connection + chain switching) |
 
 ---
 
@@ -213,13 +282,16 @@ These thresholds are documented here as the single source of truth. If the contr
 - No contract changes or redeployment
 - No indexer or subgraph
 - No Farcaster provider (separate effort if time permits)
-- No embeddable widget (see Roadmap)
+- No embeddable widget (see Roadmap, Section 9)
 - No per-metric labels in verifier view (privacy risk)
 - No Stage 5 hardening (separate effort)
+- No server-side schema endpoint for metricsVersion (hardcoded frontend map is sufficient for buildathon)
 
 ---
 
-## 9. Roadmap: Embeddable Verification Widget
+## 9. Roadmap
+
+### 9.1 — Embeddable Verification Widget
 
 **Not built this wave, but documented for future / submission narrative.**
 
@@ -235,15 +307,23 @@ An embeddable `<script>` tag + iframe that hiring platforms, grant applications,
 - No raw scores cross the iframe boundary unless explicitly configured
 - Turns ShipProof from an app into a distribution primitive
 
-This is the natural evolution of the verifier portal — from "visit our site to verify" to "verify anywhere."
+### 9.2 — Server-Side Schema Registry
+
+Replace the hardcoded `METRICS_VERSION_MAP` with a server endpoint:
+`GET /api/schema/:metricsVersion` → `{ slots: [{ index, label, provider }] }`
+
+Enables dynamic provider addition without frontend deploys.
 
 ---
 
 ## 10. Success Criteria
 
-1. A screener can open a share link, connect their wallet, and see a decrypted score + tier in under 30 seconds
+1. A screener can open a share link, connect their wallet, and see a decrypted score + tier in under 30 seconds (assumes grant already happened)
 2. A screener can search by wallet address and find badges without any backend infrastructure
 3. The landing page clearly communicates both sides of the market within 5 seconds of loading
 4. The default share flow (score only) protects against deanonymization — no individual metric values or provider-specific labels exposed
 5. The full attest → share → verify demo can be completed in under 7 minutes
 6. Post-mint UX naturally guides the builder toward sharing with a verifier
+7. Verification receipt provides a portable, signed artifact the screener can take away
+8. Multiple attestations per wallet are handled with clear "Latest" designation and chronological ordering
+9. Privacy model is honestly documented — public metadata surface is explicit, not hand-waved
