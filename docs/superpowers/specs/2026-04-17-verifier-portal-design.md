@@ -80,9 +80,20 @@ Note: The `tier` field in the event is a placeholder value (1) — actual tier i
 
 This page works for **any attestation ID** — it reads attestation data directly from `attestations(attestationId)` on the contract, not from badge events. This means share links work even if the badge hasn't been minted yet (score sharing is possible from state `ScoreComputed` onward).
 
-**Five states:**
+**Seven states:**
+
+#### State X: Invalid attestation
+- `attestations(attestationId)` returns zero/default values (attestation doesn't exist)
+- Show: "Attestation not found. This link may be invalid or the attestation may have been superseded."
+- No further UI — dead end with link back to `/verify`
+
+#### State Y: Attestation not ready
+- `attestationState` is `None`, `Submitted`, `PassComputed`, or `DecryptRequested` — score not yet available for sharing
+- Show public metadata (period, metric count) + "This attestation is still being processed. The candidate hasn't completed scoring yet."
+- No locked score teaser — nothing to decrypt
 
 #### State A: No wallet connected (teaser)
+- `attestationState` is `ScoreComputed` or `BadgeMinted` — score exists and could be shared
 - Badge card showing public metadata:
   - Attestation status: "Badge Minted" or "Score Computed" (read from `attestationState`)
   - Attestation period (fromTs – toTs, read from `attestations(attestationId)`)
@@ -119,11 +130,18 @@ This page works for **any attestation ID** — it reads attestation data directl
 - **Verification receipt** (see Section 3.6)
 - If attestation period is older than 90 days: subtle "Stale attestation" note — "This score covers {fromTs}–{toTs}. Consider requesting a fresh attestation."
 
-**Access detection:**
-- Connect wallet → ensure correct chain → create CoFHE permit via `PermitGate`
-- Read `getEncScore(attestationId)` → attempt decryption via `useCofheReadContractAndDecrypt`
-- If decryption succeeds → State E
-- If decryption fails (no FHE.allow grant) → State D
+**State resolution order:**
+1. Read `attestations(attestationId)` — if zero/empty → State X
+2. Read `attestationState(attestationId)` — if < ScoreComputed → State Y
+3. Check wallet connection — if disconnected → State A
+4. Check chain — if wrong chain → State B
+5. Check CoFHE permit — if missing/expired → State C
+6. Attempt `getEncScore` + decryption:
+   - If RPC/library error → show error banner with retry button (do NOT fall through to State D)
+   - If decryption succeeds → State E
+   - If decryption fails cleanly (no access) → State D
+
+**Error handling:** RPC failures, CoFHE coprocessor timeouts, and library errors must be distinguishable from "no access granted." The decrypt attempt should catch errors and display "Something went wrong verifying this attestation. Please try again." with a retry button — never silently fall through to State D, which would mislead the screener into thinking they don't have access.
 
 **Edge case — metric access without score access:**
 - If a screener has been granted per-metric access but not score access, show State D (no score) with a note: "You have access to individual metrics but not the overall score. Ask the candidate to share their score for a complete picture."
@@ -153,39 +171,50 @@ This page works for **any attestation ID** — it reads attestation data directl
 
 ### 3.5 — Provider Category Mapping
 
-`metricsVersion` is a 4-byte hash of sorted metric keys. To show human-readable provider categories on the verifier page, we maintain a static lookup map in the frontend:
+`metricsVersion` is a `uint32` stored on-chain, derived from `keccak256` of the sorted metric key list (e.g., `["github:commits", "github:issues", "github:pr_reviews", "github:prs", "github:repos", "x:engagement", "x:followers", "x:ship_posts"]`), truncated to 4 bytes. Any change to metric keys — adding, removing, or renaming a key within the same provider — produces a new version.
+
+To show human-readable provider categories, we maintain a static lookup map in the frontend:
 
 ```ts
+// Key: hex string of the uint32 metricsVersion, zero-padded to 8 chars, lowercase
+// To derive: `0x${metricsVersion.toString(16).padStart(8, '0')}`
 const METRICS_VERSION_MAP: Record<string, { providers: string[]; metricCount: number }> = {
-  '0xABCD1234': { providers: ['github', 'x'], metricCount: 8 },
-  // Add new entries when provider set changes
+  '0x________': { providers: ['github', 'x'], metricCount: 8 },
+  // To find the actual key: run the attestation pipeline and log the metricsVersion,
+  // or compute keccak256 of the sorted key list and take the first 4 bytes.
+  // Update this map whenever metric keys change (not just when providers change).
 }
 ```
 
-**Fallback:** If `metricsVersion` is not in the map, show generic "Multiple providers" with the raw metric count. This avoids breaking on unknown versions.
+**Fallback:** If `metricsVersion` is not in the map, show generic "Multiple providers" with the raw metric count from attestation metadata. This avoids breaking on unknown versions.
 
-**Trade-off:** This is a hardcoded registry. It breaks silently if new providers are added without updating the map. Acceptable for the buildathon — a server-side schema endpoint is the proper solution but out of scope (see Section 8).
+**Trade-off:** This is a hardcoded registry keyed by metric-key composition, not provider set. It breaks silently if metric keys change without updating the map. Acceptable for the buildathon — a server-side schema endpoint is the proper solution but out of scope (see Section 8).
 
 ### 3.6 — Verification Receipt
 
 After the screener decrypts a score (State E), offer a **client-side signed verification receipt**:
 
-**"Download Verification Receipt" button** generates a JSON object:
+**"Download Verification Receipt" button** generates a receipt via the following steps:
+
+1. Construct the canonical payload as a JSON string with keys in this exact order, no whitespace:
+```
+{"type":"ShipProofVerification","version":1,"attestationId":"0x...","candidateWallet":"0x...","verifierWallet":"0x...","tier":"Gold","scoreAboveThreshold":true,"attestationPeriod":{"from":1704067200,"to":1711929600},"verifiedAt":"2026-04-17T12:00:00Z"}
+```
+
+2. Sign the UTF-8 bytes of that string via EIP-191 `personal_sign` (wagmi `useSignMessage`).
+
+3. Bundle the payload + signature into a downloadable `.json` file:
 ```json
 {
-  "type": "ShipProofVerification",
-  "version": 1,
-  "attestationId": "0x...",
-  "candidateWallet": "0x...",
-  "verifierWallet": "0x...",
-  "tier": "Gold",
-  "scoreAboveThreshold": true,
-  "attestationPeriod": { "from": 1704067200, "to": 1711929600 },
-  "verifiedAt": "2026-04-17T12:00:00Z"
+  "receipt": { ... },
+  "signature": "0x...",
+  "signedBy": "0x..."
 }
 ```
 
-The receipt is signed by the screener's wallet (EIP-191 personal sign) so it's attributable but not forgeable. It does NOT include the raw score — only the tier and a boolean "above threshold."
+**Verification procedure:** Anyone can verify by recovering the signer from the EIP-191 signature over the canonical payload bytes and checking it matches `signedBy`. This is a standard `ecrecover` operation — no ShipProof-specific tooling needed.
+
+**Trust model (be explicit):** This receipt is a **verifier attestation**, not a cryptographic proof. It proves "wallet 0x... claims they saw a Gold-tier score for wallet 0x... on this date." It does NOT prove the score was actually decrypted or that the FHE computation was correct — that trust is already handled by the CoFHE coprocessor on-chain. The receipt is useful as an audit trail for hiring decisions, not as a standalone proof.
 
 **Why this matters:** It turns a browser-session verification into a portable artifact. The screener can attach it to a hiring decision, save it to a DAO proposal, or reference it later. No contract change needed — purely client-side.
 
@@ -256,6 +285,7 @@ These thresholds are documented here as the single source of truth. If the contr
 | `apps/web/src/components/attestation-stepper.tsx` | Post-mint prompt to share; import `friendlyError` from shared util |
 | `apps/web/src/lib/contracts.ts` | Add `DEPLOY_BLOCK` from env var, verify ABI exports |
 | `apps/web/.env` | Add `VITE_DEPLOY_BLOCK` |
+| `packages/env/src/web.ts` | Add `VITE_DEPLOY_BLOCK` to Zod schema |
 
 ### No changes:
 - No smart contract modifications
