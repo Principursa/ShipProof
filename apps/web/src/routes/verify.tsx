@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useMatch } from "@tanstack/react-router";
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { arbitrumSepolia } from "wagmi/chains";
 import { Button } from "@ShipProof/ui/components/button";
@@ -27,6 +27,15 @@ interface BadgeResult {
 }
 
 function VerifyPage() {
+  const childMatch = useMatch({ from: "/verify/$attestationId", shouldThrow: false });
+
+  // If a child route is active (e.g. /verify/$attestationId), render it instead
+  if (childMatch) return <Outlet />;
+
+  return <VerifyLookup />;
+}
+
+function VerifyLookup() {
   const [address, setAddress] = useState("");
   const [results, setResults] = useState<BadgeResult[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
