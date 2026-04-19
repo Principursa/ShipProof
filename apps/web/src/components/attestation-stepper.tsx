@@ -240,6 +240,17 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
         await execStep("mintBadge", aid);
       }
 
+      // Verify badge actually exists on-chain before claiming success
+      const minted = await arbSepoliaClient.readContract({
+        address: SHIPPROOF_ADDRESS,
+        abi: shipProofAbi,
+        functionName: "badgeMinted",
+        args: [aid],
+      });
+      if (!minted) {
+        throw new Error("Mint transaction succeeded but badge not found on-chain. Try again.");
+      }
+
       // Done
       setStep("done");
       clearState();
