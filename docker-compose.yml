@@ -11,6 +11,10 @@ services:
     labels:
       caddy: shipproof.lol
       caddy.reverse_proxy: "{{upstreams 3001}}"
+      caddy.header.Strict-Transport-Security: '"max-age=31536000; includeSubDomains; preload"'
+      caddy.header.X-Content-Type-Options: nosniff
+      caddy.header.X-Frame-Options: DENY
+      caddy.header.Referrer-Policy: strict-origin-when-cross-origin
 
   server:
     image: oven/bun:1

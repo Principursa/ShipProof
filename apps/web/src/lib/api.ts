@@ -47,6 +47,13 @@ export async function fetchAuthStatus(): Promise<AuthStatus> {
   return res.json();
 }
 
+export async function postLogout(): Promise<void> {
+  await fetch(`${BASE}/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  });
+}
+
 export async function postAttest(): Promise<AttestationEnvelope> {
   const res = await fetch(`${BASE}/attest`, {
     method: "POST",

@@ -3,6 +3,9 @@ import { env } from "@ShipProof/env/web";
 export const SHIPPROOF_ADDRESS = (env.VITE_SHIPPROOF_CONTRACT_ADDRESS ??
   "0x0000000000000000000000000000000000000000") as `0x${string}`;
 
+export const DEPLOY_BLOCK = BigInt(env.VITE_DEPLOY_BLOCK ?? "0");
+export const PASS_THRESHOLD = 4000;
+
 // Minimal ABI — only functions the frontend calls
 export const shipProofAbi = [
   {
@@ -166,6 +169,36 @@ export const shipProofAbi = [
       { name: "attestationId", type: "bytes32", indexed: true },
       { name: "to", type: "address", indexed: true },
       { name: "tier", type: "uint8", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "ScoreAccessGranted",
+    inputs: [
+      { name: "attestationId", type: "bytes32", indexed: true },
+      { name: "grantee", type: "address", indexed: true },
+    ],
+  },
+  {
+    type: "event",
+    name: "MetricAccessGranted",
+    inputs: [
+      { name: "attestationId", type: "bytes32", indexed: true },
+      { name: "slotIndex", type: "uint8", indexed: false },
+      { name: "grantee", type: "address", indexed: true },
+    ],
+  },
+  // Errors
+  { type: "error", name: "DecryptionNotReady", inputs: [] },
+  { type: "error", name: "ScoreBelowThreshold", inputs: [] },
+  { type: "error", name: "AlreadyMinted", inputs: [] },
+  { type: "error", name: "NotWallet", inputs: [] },
+  {
+    type: "error",
+    name: "WrongState",
+    inputs: [
+      { name: "expected", type: "uint8" },
+      { name: "actual", type: "uint8" },
     ],
   },
 ] as const;

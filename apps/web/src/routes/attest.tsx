@@ -6,18 +6,16 @@ import { ConnectWallet } from "@/components/connect-wallet";
 import { ProviderConnector } from "@/components/provider-connector";
 import { WalletLinker } from "@/components/wallet-linker";
 import { AttestationStepper } from "@/components/attestation-stepper";
-import { BadgeDisplay } from "@/components/badge-display";
-import { SelectiveDisclosure } from "@/components/selective-disclosure";
-import { fetchAuthStatus } from "@/lib/api";
+import { fetchAuthStatus, postLogout } from "@/lib/api";
 import { Check } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 export const Route = createFileRoute("/attest")({
   component: AttestPage,
 });
 
 function AttestPage() {
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
   const { data: status, refetch: refetchStatus } = useQuery({
     queryKey: ["auth-status"],
     queryFn: fetchAuthStatus,
@@ -26,6 +24,19 @@ function AttestPage() {
 
   const [isWalletLinked, setIsWalletLinked] = useState(!!status?.wallet);
   const [completedAttestationId, setCompletedAttestationId] = useState<`0x${string}` | null>(null);
+  const prevAddress = useRef(address);
+
+  // Reset server session when wallet changes
+  useEffect(() => {
+    if (prevAddress.current && address && prevAddress.current !== address) {
+      postLogout().then(() => {
+        setIsWalletLinked(false);
+        setCompletedAttestationId(null);
+        refetchStatus();
+      });
+    }
+    prevAddress.current = address;
+  }, [address, refetchStatus]);
 
   const walletLinked = isWalletLinked || !!status?.wallet;
   const connectedProviders = status?.connected ?? [];
@@ -75,24 +86,6 @@ function AttestPage() {
         </Step>
       </div>
 
-      {completedAttestationId && (
-        <div className="mt-14 animate-fade-up">
-          <div className="mb-6 flex items-center gap-3">
-            <div className="h-px flex-1 bg-border" />
-            <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-primary">
-              Your Proof
-            </span>
-            <div className="h-px flex-1 bg-border" />
-          </div>
-          <div className="space-y-4">
-            <BadgeDisplay attestationId={completedAttestationId} />
-            <SelectiveDisclosure
-              attestationId={completedAttestationId}
-              metricCount={8}
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
