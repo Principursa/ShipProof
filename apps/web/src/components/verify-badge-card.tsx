@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { arbitrumSepolia } from "wagmi/chains";
 import { Card, CardContent } from "@ShipProof/ui/components/card";
 import { Skeleton } from "@ShipProof/ui/components/skeleton";
-import { Lock, Loader2 } from "lucide-react";
+import { Lock, Loader2, Info } from "lucide-react";
 import { shipProofAbi, SHIPPROOF_ADDRESS, AttestationState } from "@/lib/contracts";
+import { deriveTier, TIER_COLORS, TIER_BG_COLORS } from "@/lib/tier";
 import { lookupMetricsVersion, providerCategoryLabel } from "@/lib/metrics-version";
 import { useDecryptScore } from "@/hooks/use-decrypt-score";
 
@@ -120,22 +122,24 @@ export function VerifyBadgeCard({ attestationId }: VerifyBadgeCardProps) {
           )}
           <DataRow label="Metrics" value={`${metricCount} encrypted`} />
           <DataRow label="Providers" value={categoryLabel} />
-          <div className="flex items-center justify-between py-3">
-            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-              Score
-            </span>
-            {score !== null ? (
-              <span className="font-mono text-sm">{score.toLocaleString()}</span>
-            ) : (
-              <span className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
-                {isScoreLoading ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Lock className="h-3 w-3" />
-                )}
-                {scoreLabel}
+          <div className="py-3">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                Score
               </span>
-            )}
+              {score !== null ? (
+                <ScoreWithTier score={score} />
+              ) : (
+                <span className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
+                  {isScoreLoading ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Lock className="h-3 w-3" />
+                  )}
+                  {scoreLabel}
+                </span>
+              )}
+            </div>
           </div>
           <DataRow label="Wallet" value={truncatedWallet} mono />
           <DataRow
@@ -146,6 +150,53 @@ export function VerifyBadgeCard({ attestationId }: VerifyBadgeCardProps) {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ScoreWithTier({ score }: { score: number }) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const tier = deriveTier(score);
+
+  return (
+    <div className="relative flex items-center gap-2">
+      <span className="font-mono text-sm font-medium text-primary">
+        {score.toLocaleString()} / 10,000
+      </span>
+      <button
+        type="button"
+        className={`relative px-1.5 py-0.5 font-mono text-[9px] font-medium uppercase tracking-[0.15em] ${TIER_COLORS[tier.label]} ${TIER_BG_COLORS[tier.label]}`}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        onClick={() => setShowTooltip(!showTooltip)}
+      >
+        {tier.label}
+        <Info className="ml-0.5 inline h-2.5 w-2.5 opacity-50" />
+      </button>
+
+      {showTooltip && (
+        <div className="absolute right-0 top-full z-20 mt-2 w-56 border border-border bg-card p-3 shadow-lg">
+          <p className={`mb-1 font-mono text-[10px] font-medium uppercase tracking-[0.15em] ${TIER_COLORS[tier.label]}`}>
+            {tier.label} — {tier.range}
+          </p>
+          <p className="font-mono text-[10px] leading-relaxed text-muted-foreground">
+            {tier.description}
+          </p>
+          <div className="mt-2 h-px bg-border" />
+          <div className="mt-2 space-y-1">
+            {(["Diamond", "Gold", "Silver", "Bronze"] as const).map((t) => {
+              const info = deriveTier(t === "Diamond" ? 7500 : t === "Gold" ? 5000 : t === "Silver" ? 2500 : 0);
+              const isActive = t === tier.label;
+              return (
+                <div key={t} className={`flex items-center justify-between font-mono text-[9px] ${isActive ? TIER_COLORS[t] : "text-muted-foreground/50"}`}>
+                  <span>{t}</span>
+                  <span>{info.range}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
