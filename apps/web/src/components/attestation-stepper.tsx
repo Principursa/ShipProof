@@ -8,6 +8,7 @@ import { postAttest, type AttestationEnvelope } from "@/lib/api";
 import { shipProofAbi, SHIPPROOF_ADDRESS, AttestationState } from "@/lib/contracts";
 import { friendlyError } from "@/lib/errors";
 import { env } from "@ShipProof/env/web";
+import { useCofheClient } from "@cofhe/react";
 import { PermitGate } from "./permit-gate";
 import { SelectiveDisclosure } from "./selective-disclosure";
 
@@ -23,8 +24,8 @@ const STEP_META: Record<string, { label: string; desc: string }> = {
   submit: { label: "Submit", desc: "Sending encrypted metrics" },
   computeScore: { label: "Score", desc: "FHE scoring on-chain" },
   computePass: { label: "Pass", desc: "Threshold check" },
-  decrypt: { label: "Decrypt", desc: "Revealing result" },
-  mint: { label: "Mint", desc: "Waiting for decryption, then minting" },
+  decrypt: { label: "Decrypt", desc: "Decrypting and publishing result" },
+  mint: { label: "Mint", desc: "Minting soulbound badge" },
 };
 
 const STEP_ORDER: FlowStep[] = ["submit", "computeScore", "computePass", "decrypt", "mint"];
@@ -51,6 +52,7 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
   const [running, setRunning] = useState(false);
   const { writeContractAsync } = useWriteContract();
   const { switchChainAsync } = useSwitchChain();
+  const cofheClient = useCofheClient();
   const abortRef = useRef(false);
 
   const ensureChain = useCallback(async () => {
@@ -176,54 +178,43 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
 
       if (abortRef.current) return;
 
-      // Step 4: Request Decryption
+      // Step 4: Decrypt & Publish Result
       if (startStep === "decrypt") {
         setStep("decrypt");
-        await execStep("requestPassDecryption", aid);
+
+        // 1. Read the encrypted pass handle from the contract
+        const encPassedHandle = await arbSepoliaClient.readContract({
+          address: SHIPPROOF_ADDRESS,
+          abi: shipProofAbi,
+          functionName: "getEncPassed",
+          args: [aid],
+        });
+
+        // 2. Get signed decrypt result from CoFHE coprocessor
+        const { decryptedValue, signature: decryptSig } = await cofheClient
+          .decryptForTx(encPassedHandle as string)
+          .withoutPermit()
+          .execute();
+
+        // 3. Publish on-chain
+        await ensureChain();
+        const pubHash = await writeContractAsync({
+          chainId: arbitrumSepolia.id,
+          address: SHIPPROOF_ADDRESS,
+          abi: shipProofAbi,
+          functionName: "publishPassDecryptResult",
+          args: [aid, BigInt(decryptedValue) > 0n, decryptSig as `0x${string}`],
+        });
+        await arbSepoliaClient.waitForTransactionReceipt({ hash: pubHash, confirmations: 1 });
+
         startStep = "mint";
       }
 
       if (abortRef.current) return;
 
-      // Step 5: Mint Badge (must wait for CoFHE async decryption to complete)
+      // Step 5: Mint Badge
       if (startStep === "mint") {
         setStep("mint");
-
-        // Poll with eth_call (simulate) until decryption is ready — no gas wasted
-        // CoFHE testnet coprocessor can take 2-5+ minutes
-        const maxAttempts = 60;
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-          if (abortRef.current) return;
-          try {
-            await arbSepoliaClient.simulateContract({
-              address: SHIPPROOF_ADDRESS,
-              abi: shipProofAbi,
-              functionName: "mintBadge",
-              args: [aid],
-              account: address as `0x${string}`,
-            });
-            break; // Simulation passed — decryption is ready
-          } catch (err) {
-            // Check if this is a DecryptionNotReady revert — stringify to catch it
-            // regardless of how viem nests the error
-            const errStr = String(err);
-            const isNotReady = errStr.includes("DecryptionNotReady") ||
-              errStr.includes("0x9bbc3a63") ||
-              errStr.includes("execution reverted");
-
-            if (isNotReady && attempt < maxAttempts - 1) {
-              console.log(`[ShipProof] Waiting for decryption (attempt ${attempt + 1}/${maxAttempts})`);
-              await new Promise((r) => setTimeout(r, 5000));
-              continue;
-            }
-            if (isNotReady) {
-              throw new Error("CoFHE decryption timed out. The coprocessor may be slow or offline. Click Retry to keep waiting.");
-            }
-            throw err;
-          }
-        }
-
-        // Decryption ready — now send the real tx
         await execStep("mintBadge", aid);
       }
 
@@ -245,7 +236,7 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
     } finally {
       setRunning(false);
     }
-  }, [address, ensureChain, writeContractAsync, execStep, onComplete]);
+  }, [address, ensureChain, writeContractAsync, execStep, onComplete, cofheClient]);
 
   /** Start fresh or resume from current step */
   const handleStart = useCallback(() => {
@@ -330,7 +321,7 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
               {activeStepMeta.desc}
             </p>
             <p className="font-mono text-[9px] text-muted-foreground">
-              {step === "mint" ? "Waiting for CoFHE coprocessor" : "Approve the transaction in your wallet"}
+              {step === "decrypt" ? "Requesting CoFHE decryption" : "Approve the transaction in your wallet"}
             </p>
           </div>
           <span className="ml-auto font-mono text-[9px] text-muted-foreground/50">
