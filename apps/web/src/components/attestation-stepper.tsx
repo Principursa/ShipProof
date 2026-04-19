@@ -83,7 +83,7 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
 
   /** Execute a single contract step and wait for confirmation */
   const execStep = useCallback(async (
-    functionName: "computeScore" | "computePass" | "requestPassDecryption" | "mintBadge",
+    functionName: "computeScore" | "computePass" | "publishPassDecryptResult" | "mintBadge",
     aid: `0x${string}`,
   ) => {
     await ensureChain();
@@ -197,7 +197,7 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
         let decryptSig: string = "0x";
         for (let attempt = 0; attempt < 12; attempt++) {
           try {
-            const builder = cofheClient.decryptForTx(encPassedHandle as string);
+            const builder = cofheClient.decryptForTx(encPassedHandle as string) as any;
             if (activePermit?.permit) {
               builder.withPermit(activePermit.permit.hash);
             } else {
