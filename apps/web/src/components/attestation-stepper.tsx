@@ -8,7 +8,7 @@ import { postAttest, type AttestationEnvelope } from "@/lib/api";
 import { shipProofAbi, SHIPPROOF_ADDRESS, AttestationState } from "@/lib/contracts";
 import { friendlyError } from "@/lib/errors";
 import { env } from "@ShipProof/env/web";
-import { useCofheClient } from "@cofhe/react";
+import { useCofheClient, useCofheActivePermit } from "@cofhe/react";
 import { PermitGate } from "./permit-gate";
 import { SelectiveDisclosure } from "./selective-disclosure";
 
@@ -53,6 +53,7 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
   const { writeContractAsync } = useWriteContract();
   const { switchChainAsync } = useSwitchChain();
   const cofheClient = useCofheClient();
+  const activePermit = useCofheActivePermit();
   const abortRef = useRef(false);
 
   const ensureChain = useCallback(async () => {
@@ -190,11 +191,32 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
           args: [aid],
         });
 
-        // 2. Get signed decrypt result from CoFHE coprocessor
-        const { decryptedValue, signature: decryptSig } = await cofheClient
-          .decryptForTx(encPassedHandle as string)
-          .withoutPermit()
-          .execute();
+        // 2. Get signed decrypt result from CoFHE coprocessor (requires active permit)
+        // Retry on 428 (Precondition Required) — coprocessor may need time after computePass
+        let decryptedValue: string | bigint = 0n;
+        let decryptSig: string = "0x";
+        for (let attempt = 0; attempt < 12; attempt++) {
+          try {
+            const builder = cofheClient.decryptForTx(encPassedHandle as string);
+            if (activePermit?.permit) {
+              builder.withPermit(activePermit.permit.hash);
+            } else {
+              builder.withPermit();
+            }
+            const result = await builder.execute();
+            decryptedValue = result.decryptedValue;
+            decryptSig = result.signature;
+            break;
+          } catch (e) {
+            const msg = String(e);
+            if ((msg.includes("428") || msg.includes("Precondition")) && attempt < 11) {
+              console.log(`[ShipProof] CoFHE not ready, retrying decrypt in 5s (attempt ${attempt + 1}/12)`);
+              await new Promise((r) => setTimeout(r, 5000));
+              continue;
+            }
+            throw e;
+          }
+        }
 
         // 3. Publish on-chain
         await ensureChain();
@@ -225,12 +247,15 @@ export function AttestationStepper({ onComplete }: { onComplete?: (attestationId
 
     } catch (err) {
       console.error("[ShipProof] flow error:", err);
-      const msg = friendlyError(err);
-      if (msg.includes("threshold")) {
+      const errStr = String(err);
+      const isBelowThreshold = errStr.includes("ScoreBelowThreshold") ||
+        errStr.includes("0x5b77f0d3") ||
+        errStr.includes("Score below threshold");
+      if (isBelowThreshold) {
         setStep("failed");
         clearState();
       } else {
-        setError(msg);
+        setError(friendlyError(err));
         // Step stays at current position so user can retry from there
       }
     } finally {
