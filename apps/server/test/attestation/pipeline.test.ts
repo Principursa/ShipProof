@@ -4,21 +4,6 @@ import { registerProvider } from "../../src/providers/registry";
 import type { MetricProvider } from "../../src/providers/types";
 import { computeSchemaVersion } from "../../src/attestation/encrypt";
 
-const testProvider2: MetricProvider = {
-  id: "test2",
-  displayName: "Test2",
-  requiredScopes: [],
-  getAuthUrl: () => "",
-  exchangeCode: async () => ({ accessToken: "test2" }),
-  getUserId: async () => "user2",
-  fetchMetrics: async (_, userId) => ({
-    providerId: "test2",
-    userId,
-    metrics: [
-      { key: "test2_x", label: "X", value: 10, cap: 50, weight: 3000 },
-    ],
-  }),
-};
 
 const testProvider: MetricProvider = {
   id: "test",
