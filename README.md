@@ -1,6 +1,6 @@
 # ShipProof
 
-Private contributor verification. Builders prove their track record without exposing their accounts. Verifiers decrypt only what was shared with them.
+Private contributor verification. Builders attest their track record on-chain; verifiers decrypt only what the builder chose to share.
 
 Live at [shipproof.lol](https://shipproof.lol) on Arbitrum Sepolia.
 
@@ -35,7 +35,7 @@ Verifier Portal (/verify)
 4. **Score** — contract computes weighted score entirely on encrypted data
 5. **Mint** — if encrypted score passes threshold, mint soulbound badge
 6. **Disclose** — grant score/metric access to a specific verifier wallet
-7. **Verify** — verifier decrypts shared score, sees tier, downloads receipt
+7. **Verify** — verifier decrypts shared score, sees tier
 
 ## Smart Contracts
 
@@ -45,7 +45,7 @@ Deployed and verified on Arbitrum Sepolia:
 
 ### ShipProof.sol
 
-Core attestation contract. 46 FHE calls across 12 operation types.
+Core attestation contract. 50 FHE calls across 12 operation types.
 
 | Function | Description |
 |----------|-------------|
@@ -53,7 +53,8 @@ Core attestation contract. 46 FHE calls across 12 operation types.
 | `computeScore(attestationId)` | Normalize and weight each metric on ciphertext: `min(raw, cap) * SCALE / cap * weight` |
 | `computePass(attestationId)` | Compare encrypted score against threshold via `FHE.gte` |
 | `publishPassDecryptResult(attestationId, result, sig)` | Publish CoFHE-signed decryption of pass/fail boolean |
-| `mintBadge(attestationId)` | Mint soulbound badge if pass verified. Computes tier via 3x `FHE.gte` + 3x `FHE.select` |
+| `mintBadge(attestationId)` | Mint soulbound badge if pass verified |
+| `computeTier(attestationId)` | Derive tier from encrypted score via 3x `FHE.gte` + 3x `FHE.select` (constant-time) |
 | `grantScoreAccess(attestationId, grantee)` | Allow an address to decrypt the encrypted score |
 | `grantMetricAccess(attestationId, slotIndex, grantee)` | Allow an address to decrypt a specific encrypted metric |
 
@@ -76,8 +77,8 @@ Providers implement the `MetricProvider` interface. Adding a new provider requir
 | Commits | `gh_commits` | 500 | 2000 | GraphQL contributionsCollection |
 | Pull Requests | `gh_prs` | 200 | 2500 | GraphQL contributionsCollection |
 | Issues Opened | `gh_issues` | 100 | 500 | GraphQL contributionsCollection |
-| Repo Breadth | `gh_repos` | 30 | 1000 | Unique repos contributed to |
-| PR Reviews | `gh_pr_reviews` | 100 | 1000 | GraphQL contributionsCollection |
+| Repo Breadth | `gh_repo_breadth` | 30 | 1000 | Unique repos contributed to |
+| PR Reviews | `gh_reviews` | 100 | 1000 | GraphQL contributionsCollection |
 
 ### X (3 metrics)
 
@@ -96,10 +97,10 @@ ShipProof/
 ├── apps/
 │   ├── server/              # Oracle service (Bun + Hono)
 │   │   ├── src/
-│   │   │   ├── routes/      # auth (OAuth), attest (envelope), wallet (linking)
+│   │   │   ├── routes/      # auth (OAuth), attest (envelope)
 │   │   │   ├── providers/   # GitHub, X — pluggable MetricProvider interface
 │   │   │   ├── attestation/ # pipeline, encrypt (@cofhe/sdk/node), sign (EIP-712)
-│   │   │   ├── auth/        # wallet linking + signature verification
+│   │   │   ├── auth/        # wallet linking (EIP-191) + signature verification
 │   │   │   └── session.ts   # signed cookie sessions
 │   │   └── test/            # 36 tests
 │   │
@@ -137,7 +138,7 @@ ShipProof/
 | 2 | `computeScore` | Weighted scoring on encrypted data (FHE.min, FHE.mul, FHE.div, FHE.add) |
 | 3 | `computePass` | Encrypted score compared to threshold (FHE.gte) |
 | 4 | `publishPassDecryptResult` | CoFHE-signed decryption of pass/fail boolean |
-| 5 | `mintBadge` | If passed: mint soulbound NFT, compute tier (Bronze/Silver/Gold/Diamond) |
+| 5 | `mintBadge` | If passed: mint soulbound NFT |
 
 Frontend auto-chains all 5 with a single button click. Resumable from any step on error or page reload.
 
@@ -148,11 +149,11 @@ Frontend auto-chains all 5 with a single button click. Resumable from any step o
 - EIP-712 signature binds attestation to a whitelisted oracle address
 - Weights and caps are supplied per attestation via the oracle envelope
 - Scoring logic (normalization, aggregation, tier computation) is on-chain
-- Anti-sybil: identity hash from provider userIds + salt prevents duplicate attestations
+- Identity supersession: identity hash from provider userIds + salt maps to latest attestation (new attestation supersedes old)
 - Replay protection: oracle nonce prevents envelope reuse
 - Expiration: attestation envelopes expire
 - Soulbound badges: non-transferable
-- Constant-time tier computation: 3x `FHE.gte` + 3x `FHE.select`, no branch leakage
+- Constant-time tier computation: `computeTier` uses 3x `FHE.gte` + 3x `FHE.select`, no branch leakage
 
 ## Quick Start
 
@@ -190,7 +191,7 @@ forge script script/DeployShipProof.s.sol \
 
 ```bash
 cd apps/server
-# Configure .env (see .env.example)
+# Configure .env
 bun run dev
 ```
 
@@ -198,7 +199,7 @@ bun run dev
 
 ```bash
 cd apps/web
-# Configure .env (see .env.example)
+# Configure .env
 bun run dev
 ```
 
@@ -219,7 +220,7 @@ bun run check-types
 
 | Layer | Technology |
 |-------|-----------|
-| Contracts | Solidity 0.8.31, Foundry, CoFHE v0.1.3, OpenZeppelin v5.6.1 |
+| Contracts | Solidity ^0.8.24, Foundry, CoFHE v0.1.3, OpenZeppelin v5.6.1 |
 | Server | Bun, Hono, @cofhe/sdk/node, viem, Zod |
 | Frontend | React 19, Vite, TanStack Router, TanStack Query, wagmi, @cofhe/sdk, shadcn/ui, Tailwind CSS v4 |
 | Chain | Arbitrum Sepolia (421614) |
