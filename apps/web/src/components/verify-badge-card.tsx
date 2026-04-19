@@ -1,17 +1,18 @@
-import { useState } from "react";
-import { useReadContract, useAccount, useSignMessage } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
+import { arbitrumSepolia } from "wagmi/chains";
 import { Card, CardContent } from "@ShipProof/ui/components/card";
 import { Skeleton } from "@ShipProof/ui/components/skeleton";
-import { Button } from "@ShipProof/ui/components/button";
-import { Lock } from "lucide-react";
+import { Lock, Loader2 } from "lucide-react";
 import { shipProofAbi, SHIPPROOF_ADDRESS, AttestationState } from "@/lib/contracts";
 import { lookupMetricsVersion, providerCategoryLabel } from "@/lib/metrics-version";
+import { useDecryptScore } from "@/hooks/use-decrypt-score";
 
 interface VerifyBadgeCardProps {
   attestationId: `0x${string}`;
 }
 
 export function VerifyBadgeCard({ attestationId }: VerifyBadgeCardProps) {
+  const { chainId, isConnected } = useAccount();
   const { data: attestation, isLoading } = useReadContract({
     address: SHIPPROOF_ADDRESS,
     abi: shipProofAbi,
@@ -33,6 +34,19 @@ export function VerifyBadgeCard({ attestationId }: VerifyBadgeCardProps) {
     args: [attestationId],
   });
 
+  const state = Number(stateRaw ?? 0);
+  const isOnCorrectChain = chainId === arbitrumSepolia.id;
+  const canDecryptScore =
+    isConnected &&
+    isOnCorrectChain &&
+    state >= AttestationState.ScoreComputed;
+  const {
+    data: score,
+    isLoading: isScoreLoading,
+    isError: isScoreError,
+    error: scoreError,
+  } = useDecryptScore(attestationId, canDecryptScore);
+
   if (isLoading) return <Skeleton className="h-52 w-full" />;
 
   if (!attestation) {
@@ -50,13 +64,27 @@ export function VerifyBadgeCard({ attestationId }: VerifyBadgeCardProps) {
   const [, fromTs, toTs, metricCount, metricsVersion, , wallet] =
     attestation as [string, bigint, bigint, number, number, number, string, bigint, bigint];
 
-  const state = Number(stateRaw ?? 0);
   const fromDate = new Date(Number(fromTs) * 1000).toLocaleDateString();
   const toDate = new Date(Number(toTs) * 1000).toLocaleDateString();
   const truncatedWallet = `${(wallet as string).slice(0, 6)}…${(wallet as string).slice(-4)}`;
   const versionInfo = lookupMetricsVersion(metricsVersion);
   const categoryLabel = providerCategoryLabel(versionInfo.providers);
   const isStale = (Date.now() / 1000 - Number(toTs)) > 90 * 24 * 60 * 60;
+  const scoreLabel = !isConnected
+    ? "Connect wallet"
+    : !isOnCorrectChain
+      ? "Wrong chain"
+    : state < AttestationState.ScoreComputed
+      ? "Processing"
+      : isScoreLoading
+        ? "Decrypting…"
+        : score !== null
+          ? score.toLocaleString()
+          : scoreError?.message.includes("permit")
+            ? "Permit required"
+            : isScoreError
+              ? "Access required"
+              : "Encrypted";
 
   return (
     <Card className="stamp-border overflow-hidden">
@@ -96,9 +124,18 @@ export function VerifyBadgeCard({ attestationId }: VerifyBadgeCardProps) {
             <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
               Score
             </span>
-            <span className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
-              <Lock className="h-3 w-3" /> Encrypted
-            </span>
+            {score !== null ? (
+              <span className="font-mono text-sm">{score.toLocaleString()}</span>
+            ) : (
+              <span className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
+                {isScoreLoading ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Lock className="h-3 w-3" />
+                )}
+                {scoreLabel}
+              </span>
+            )}
           </div>
           <DataRow label="Wallet" value={truncatedWallet} mono />
           <DataRow
