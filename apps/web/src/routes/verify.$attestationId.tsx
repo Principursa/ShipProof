@@ -1,18 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAccount, useSwitchChain } from "wagmi";
 import { useReadContract } from "wagmi";
-import { useCofheReadContractAndDecrypt } from "@cofhe/react";
 import { arbitrumSepolia } from "wagmi/chains";
 import { Button } from "@ShipProof/ui/components/button";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import {
   shipProofAbi,
   SHIPPROOF_ADDRESS,
   AttestationState,
 } from "@/lib/contracts";
 import { VerifyBadgeCard } from "@/components/verify-badge-card";
-import { PermitGate } from "@/components/permit-gate";
-import { ErrorBoundary } from "@/components/error-boundary";
 
 export const Route = createFileRoute("/verify/$attestationId")({
   component: VerifyDetailPage,
@@ -49,9 +46,6 @@ function VerifyDetailPage() {
   const isNotReady =
     !isInvalid && state > AttestationState.None && state < AttestationState.ScoreComputed;
 
-  // Can we attempt decryption?
-  const canAttemptDecrypt = isConnected && isOnCorrectChain && !isInvalid && !isNotReady;
-
   return (
     <div className="mx-auto w-full max-w-xl px-6 py-12 md:py-16">
       <div className="mb-10 animate-fade-up">
@@ -62,7 +56,7 @@ function VerifyDetailPage() {
           Verify Attestation
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          View and decrypt a candidate's shared score.
+          View a candidate's badge details.
         </p>
       </div>
 
@@ -101,11 +95,8 @@ function VerifyDetailPage() {
 
         {/* Badge card (shows for all valid states) */}
         {!isInvalid && !isNotReady && (
-          <ErrorBoundary>
-            <VerifyBadgeCard
-              attestationId={id}
-              attemptDecrypt={canAttemptDecrypt}
-            />
+          <>
+            <VerifyBadgeCard attestationId={id} />
 
             {/* State A: Not connected */}
             {!isConnected && (
@@ -136,101 +127,34 @@ function VerifyDetailPage() {
               </div>
             )}
 
-            {/* State C: Need permit — PermitGate handles missing/expired */}
+            {/* Connected + correct chain — show access info */}
             {isConnected && isOnCorrectChain && (
-              <PermitGate action="verifying this attestation">
-                {/* State D/E: PermitGate children render when permit is ready */}
-                {/* VerifyBadgeCard handles decryption and shows score or "No access" */}
-                <VerifyDetailStatus attestationId={id} />
-              </PermitGate>
+              <div className="border border-dashed border-border p-5 space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Score decryption requires the candidate to grant your wallet access.
+                </p>
+                <p className="font-mono text-[10px] text-muted-foreground">
+                  Share your wallet address with the candidate:
+                </p>
+                {address && (
+                  <code className="block rounded bg-muted px-3 py-2 font-mono text-xs break-all">
+                    {address}
+                  </code>
+                )}
+                <Link to="/" className="inline-block">
+                  <Button
+                    variant="link"
+                    size="xs"
+                    className="font-mono text-[10px] uppercase tracking-[0.15em] px-0"
+                  >
+                    Learn how ShipProof works
+                  </Button>
+                </Link>
+              </div>
             )}
-          </ErrorBoundary>
+          </>
         )}
       </div>
-    </div>
-  );
-}
-
-/**
- * Subcomponent rendered inside PermitGate (only when permit is active).
- * Distinguishes State D (no access) from State E (access granted) and handles errors.
- */
-function VerifyDetailStatus({ attestationId }: { attestationId: `0x${string}` }) {
-  const { address } = useAccount();
-  const {
-    decrypted: decryptedScore,
-  } = useCofheReadContractAndDecrypt({
-    address: SHIPPROOF_ADDRESS,
-    abi: shipProofAbi,
-    functionName: "getEncScore",
-    args: [attestationId],
-  });
-
-  // Error state — RPC/coprocessor failure, NOT access denial
-  if (decryptedScore.isError) {
-    return (
-      <div className="border border-destructive/20 bg-destructive/5 p-4 space-y-2">
-        <p className="font-mono text-[11px] text-destructive">
-          Something went wrong verifying this attestation. Please try again.
-        </p>
-        <Button
-          size="xs"
-          variant="outline"
-          onClick={() => decryptedScore.refetch()}
-          className="font-mono text-[10px] uppercase tracking-[0.15em]"
-        >
-          Retry
-        </Button>
-      </div>
-    );
-  }
-
-  // Loading
-  if (decryptedScore.isLoading) {
-    return (
-      <div className="border border-border/50 p-4 text-center">
-        <Loader2 className="mx-auto h-4 w-4 animate-spin text-muted-foreground" />
-        <p className="mt-2 font-mono text-[10px] text-muted-foreground">
-          Checking access...
-        </p>
-      </div>
-    );
-  }
-
-  // State E: Access granted — score is shown in the VerifyBadgeCard above
-  if (decryptedScore.data != null) {
-    return (
-      <div className="border border-primary/10 bg-accent/20 p-4">
-        <p className="font-mono text-[10px] text-primary">
-          Score decrypted successfully. See results above.
-        </p>
-      </div>
-    );
-  }
-
-  // State D: No access granted
-  return (
-    <div className="border border-dashed border-border p-5 space-y-3">
-      <p className="text-sm text-muted-foreground">
-        This candidate hasn't shared their score with your wallet yet.
-      </p>
-      <p className="font-mono text-[10px] text-muted-foreground">
-        Send them your wallet address so they can grant you access:
-      </p>
-      {address && (
-        <code className="block rounded bg-muted px-3 py-2 font-mono text-xs break-all">
-          {address}
-        </code>
-      )}
-      <Link to="/" className="inline-block">
-        <Button
-          variant="link"
-          size="xs"
-          className="font-mono text-[10px] uppercase tracking-[0.15em] px-0"
-        >
-          Learn how ShipProof works
-        </Button>
-      </Link>
     </div>
   );
 }
