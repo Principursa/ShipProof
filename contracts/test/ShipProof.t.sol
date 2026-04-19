@@ -258,10 +258,7 @@ contract ShipProofTest is ShipProofTestHelper {
         vm.prank(alice);
         sp.computePass(id);
 
-        vm.prank(alice);
-        sp.requestPassDecryption(id);
-
-        vm.warp(block.timestamp + 11);
+        sp.publishPassDecryptResult(id, false, "");
 
         // Badge mint should revert — score below threshold
         vm.prank(alice);
@@ -278,11 +275,9 @@ contract ShipProofTest is ShipProofTestHelper {
         vm.startPrank(alice);
         sp.computeScore(id);
         sp.computePass(id);
-        sp.requestPassDecryption(id);
         vm.stopPrank();
 
-        // Advance past mock async decryption delay
-        vm.warp(block.timestamp + 11);
+        sp.publishPassDecryptResult(id, true, "");
 
         vm.prank(alice);
         sp.mintBadge(id);
@@ -299,10 +294,9 @@ contract ShipProofTest is ShipProofTestHelper {
         vm.startPrank(alice);
         sp.computeScore(id);
         sp.computePass(id);
-        sp.requestPassDecryption(id);
         vm.stopPrank();
 
-        vm.warp(block.timestamp + 11);
+        sp.publishPassDecryptResult(id, false, "");
 
         vm.prank(alice);
         vm.expectRevert(ShipProof.ScoreBelowThreshold.selector);
@@ -314,10 +308,9 @@ contract ShipProofTest is ShipProofTestHelper {
         vm.startPrank(alice);
         sp.computeScore(id);
         sp.computePass(id);
-        sp.requestPassDecryption(id);
         vm.stopPrank();
 
-        vm.warp(block.timestamp + 11);
+        sp.publishPassDecryptResult(id, true, "");
 
         vm.prank(alice);
         sp.mintBadge(id);
@@ -456,9 +449,10 @@ contract ShipProofTest is ShipProofTestHelper {
         vm.startPrank(alice);
         sp.computeScore(id);
         sp.computePass(id);
-        sp.requestPassDecryption(id);
         vm.stopPrank();
-        vm.warp(block.timestamp + 11);
+
+        sp.publishPassDecryptResult(id, true, "");
+
         vm.prank(alice);
         sp.mintBadge(id);
     }
