@@ -1,14 +1,23 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useAccount } from "wagmi";
 import { useQuery } from "@tanstack/react-query";
+import { createPublicClient, http, parseAbiItem } from "viem";
+import { arbitrumSepolia } from "wagmi/chains";
 import { Card, CardContent } from "@ShipProof/ui/components/card";
+import { Button } from "@ShipProof/ui/components/button";
 import { ConnectWallet } from "@/components/connect-wallet";
 import { ProviderConnector } from "@/components/provider-connector";
 import { WalletLinker } from "@/components/wallet-linker";
 import { AttestationStepper } from "@/components/attestation-stepper";
 import { fetchAuthStatus, postLogout } from "@/lib/api";
-import { Check } from "lucide-react";
+import { SHIPPROOF_ADDRESS, DEPLOY_BLOCK } from "@/lib/contracts";
+import { Check, RefreshCw } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
+
+const logsClient = createPublicClient({
+  chain: arbitrumSepolia,
+  transport: http("https://sepolia-rollup.arbitrum.io/rpc"),
+});
 
 export const Route = createFileRoute("/attest")({
   component: AttestPage,
@@ -37,6 +46,27 @@ function AttestPage() {
     }
     prevAddress.current = address;
   }, [address, refetchStatus]);
+
+  const [existingBadge, setExistingBadge] = useState<`0x${string}` | null>(null);
+  const [showReAttest, setShowReAttest] = useState(false);
+
+  // Check for existing badges when wallet connects
+  useEffect(() => {
+    if (!address) { setExistingBadge(null); return; }
+    logsClient.getLogs({
+      address: SHIPPROOF_ADDRESS,
+      event: parseAbiItem("event BadgeMinted(bytes32 indexed attestationId, address indexed to, uint8 tier)"),
+      args: { to: address },
+      fromBlock: DEPLOY_BLOCK,
+      toBlock: "latest",
+    }).then((logs) => {
+      if (logs.length > 0) {
+        setExistingBadge(logs[logs.length - 1].args.attestationId as `0x${string}`);
+      } else {
+        setExistingBadge(null);
+      }
+    }).catch(() => setExistingBadge(null));
+  }, [address, completedAttestationId]);
 
   const walletLinked = isWalletLinked || !!status?.wallet;
   const connectedProviders = status?.connected ?? [];
@@ -75,9 +105,44 @@ function AttestPage() {
           />
         </Step>
 
-        <Step number={4} title="Generate Score" done={!!completedAttestationId}>
+        <Step number={4} title="Generate Score" done={!!completedAttestationId || !!existingBadge}>
           {canAttest ? (
-            <AttestationStepper onComplete={(id) => setCompletedAttestationId(id)} />
+            existingBadge && !showReAttest ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 border border-primary/20 bg-accent/30 p-3">
+                  <Check className="h-4 w-4 text-primary" />
+                  <div className="flex-1">
+                    <p className="font-mono text-[11px] text-foreground">
+                      You already have a ShipProof badge
+                    </p>
+                    <p className="font-mono text-[9px] text-muted-foreground">
+                      {existingBadge.slice(0, 10)}…{existingBadge.slice(-6)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Link to="/verify/$attestationId" params={{ attestationId: existingBadge }} className="flex-1">
+                    <Button variant="outline" className="w-full font-mono text-[10px] uppercase tracking-[0.15em]">
+                      View Badge
+                    </Button>
+                  </Link>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setShowReAttest(true)}
+                    className="flex-1 font-mono text-[10px] uppercase tracking-[0.15em]"
+                  >
+                    <RefreshCw className="mr-1.5 h-3 w-3" />
+                    Update Score
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <AttestationStepper onComplete={(id) => {
+                setCompletedAttestationId(id);
+                setExistingBadge(id);
+                setShowReAttest(false);
+              }} />
+            )
           ) : (
             <p className="text-sm text-muted-foreground">
               Complete steps 1–3 to begin.
