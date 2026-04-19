@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "branch_name": "feature",
+      "worktree_path": "/home/Cifr/Projects/ShipProof",
+      "status": "active",
+      "created_at": "2026-04-19T15:05:39.538Z",
+      "updated_at": "2026-04-19T15:05:39.538Z"
+    }
+  ]
+}
