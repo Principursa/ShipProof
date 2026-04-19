@@ -40,8 +40,8 @@
       "dependencies": {
         "@ShipProof/env": "workspace:*",
         "@ShipProof/ui": "workspace:*",
-        "@cofhe/abi": "^0.4.0",
-        "@cofhe/react": "^0.4.0",
+        "@cofhe/abi": "0.4.0",
+        "@cofhe/react": "0.4.0",
         "@cofhe/sdk": "0.4.0",
         "@emotion/react": "^11.14.0",
         "@emotion/styled": "^11.14.0",

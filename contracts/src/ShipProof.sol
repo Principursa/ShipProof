@@ -298,17 +298,19 @@ contract ShipProof is Ownable, EIP712 {
         return passed;
     }
 
-    /// @notice Request async decryption of the pass/fail boolean via CoFHE coprocessor.
-    /// @dev Reads encPassed handle. FHE.decrypt() initiates async decryption — result becomes
-    ///      available via getDecryptResultSafe after coprocessor completes. The decrypted boolean
-    ///      is PUBLIC to this contract (used in mintBadge). Only the pass/fail bit is ever decrypted;
-    ///      scores and metrics remain encrypted unless the user grants access.
-    function requestPassDecryption(bytes32 attestationId) external {
+    /// @notice Publish a CoFHE-signed decryption result for the pass/fail boolean.
+    /// @dev Anyone can call this (relayer, frontend, coprocessor). The signature is verified
+    ///      on-chain by the TaskManager against the CoFHE signer. The decrypted boolean
+    ///      becomes readable via getDecryptResultSafe in mintBadge.
+    function publishPassDecryptResult(
+        bytes32 attestationId,
+        bool result,
+        bytes calldata signature
+    ) external {
         _requireState(attestationId, AttestationState.PassComputed);
-        if (msg.sender != attestations[attestationId].wallet) revert NotWallet();
 
         ebool passed = encPassed[attestationId];
-        FHE.decrypt(passed);
+        FHE.publishDecryptResult(passed, result, signature);
 
         attestationState[attestationId] = AttestationState.DecryptRequested;
         emit DecryptionRequested(attestationId);

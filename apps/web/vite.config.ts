@@ -16,5 +16,9 @@ export default defineConfig({
     port: 3001,
     host: true,
     allowedHosts: ["shipproof.lol"],
+    hmr: {
+      protocol: "wss",
+      host: "shipproof.lol",
+    },
   },
 });

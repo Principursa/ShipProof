@@ -73,5 +73,14 @@ export function createAuthRouter(baseUrl: string, sessionSecret: string, fronten
     return c.redirect(authResult.url);
   });
 
+  // Clear session (used when wallet changes)
+  auth.post("/logout", (c) => {
+    const session = getSession(c);
+    session.providers = {};
+    delete session.wallet;
+    c.set("session", session);
+    return c.json({ ok: true });
+  });
+
   return auth;
 }

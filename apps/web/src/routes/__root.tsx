@@ -18,7 +18,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
       },
       {
         name: "description",
-        content: "Confidential builder attestation powered by FHE. Prove you ship without exposing your metrics.",
+        content: "Private contributor verification for hiring, grants, and access decisions. Powered by FHE.",
       },
     ],
     links: [

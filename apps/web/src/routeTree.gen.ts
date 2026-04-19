@@ -9,10 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as VerifyRouteImport } from './routes/verify'
 import { Route as AttestRouteImport } from './routes/attest'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as VerifyAttestationIdRouteImport } from './routes/verify.$attestationId'
 import { Route as BadgeIdRouteImport } from './routes/badge.$id'
 
+const VerifyRoute = VerifyRouteImport.update({
+  id: '/verify',
+  path: '/verify',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AttestRoute = AttestRouteImport.update({
   id: '/attest',
   path: '/attest',
@@ -23,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VerifyAttestationIdRoute = VerifyAttestationIdRouteImport.update({
+  id: '/$attestationId',
+  path: '/$attestationId',
+  getParentRoute: () => VerifyRoute,
+} as any)
 const BadgeIdRoute = BadgeIdRouteImport.update({
   id: '/badge/$id',
   path: '/badge/$id',
@@ -32,35 +44,60 @@ const BadgeIdRoute = BadgeIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/attest': typeof AttestRoute
+  '/verify': typeof VerifyRouteWithChildren
   '/badge/$id': typeof BadgeIdRoute
+  '/verify/$attestationId': typeof VerifyAttestationIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/attest': typeof AttestRoute
+  '/verify': typeof VerifyRouteWithChildren
   '/badge/$id': typeof BadgeIdRoute
+  '/verify/$attestationId': typeof VerifyAttestationIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/attest': typeof AttestRoute
+  '/verify': typeof VerifyRouteWithChildren
   '/badge/$id': typeof BadgeIdRoute
+  '/verify/$attestationId': typeof VerifyAttestationIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/attest' | '/badge/$id'
+  fullPaths:
+    | '/'
+    | '/attest'
+    | '/verify'
+    | '/badge/$id'
+    | '/verify/$attestationId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/attest' | '/badge/$id'
-  id: '__root__' | '/' | '/attest' | '/badge/$id'
+  to: '/' | '/attest' | '/verify' | '/badge/$id' | '/verify/$attestationId'
+  id:
+    | '__root__'
+    | '/'
+    | '/attest'
+    | '/verify'
+    | '/badge/$id'
+    | '/verify/$attestationId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AttestRoute: typeof AttestRoute
+  VerifyRoute: typeof VerifyRouteWithChildren
   BadgeIdRoute: typeof BadgeIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/verify': {
+      id: '/verify'
+      path: '/verify'
+      fullPath: '/verify'
+      preLoaderRoute: typeof VerifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/attest': {
       id: '/attest'
       path: '/attest'
@@ -75,6 +112,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/verify/$attestationId': {
+      id: '/verify/$attestationId'
+      path: '/$attestationId'
+      fullPath: '/verify/$attestationId'
+      preLoaderRoute: typeof VerifyAttestationIdRouteImport
+      parentRoute: typeof VerifyRoute
+    }
     '/badge/$id': {
       id: '/badge/$id'
       path: '/badge/$id'
@@ -85,9 +129,21 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface VerifyRouteChildren {
+  VerifyAttestationIdRoute: typeof VerifyAttestationIdRoute
+}
+
+const VerifyRouteChildren: VerifyRouteChildren = {
+  VerifyAttestationIdRoute: VerifyAttestationIdRoute,
+}
+
+const VerifyRouteWithChildren =
+  VerifyRoute._addFileChildren(VerifyRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AttestRoute: AttestRoute,
+  VerifyRoute: VerifyRouteWithChildren,
   BadgeIdRoute: BadgeIdRoute,
 }
 export const routeTree = rootRouteImport

@@ -1,8 +1,7 @@
 import { useReadContract } from "wagmi";
-import { useCofheReadContractAndDecrypt } from "@cofhe/react";
 import { Card, CardContent } from "@ShipProof/ui/components/card";
 import { Skeleton } from "@ShipProof/ui/components/skeleton";
-import { Lock, Loader2 } from "lucide-react";
+import { Lock } from "lucide-react";
 import { shipProofAbi, SHIPPROOF_ADDRESS } from "@/lib/contracts";
 
 interface BadgeDisplayProps {
@@ -21,13 +20,6 @@ export function BadgeDisplay({ attestationId }: BadgeDisplayProps) {
     address: SHIPPROOF_ADDRESS,
     abi: shipProofAbi,
     functionName: "badgeMinted",
-    args: [attestationId],
-  });
-
-  const { decrypted: decryptedScore, disabledDueToMissingPermit } = useCofheReadContractAndDecrypt({
-    address: SHIPPROOF_ADDRESS,
-    abi: shipProofAbi,
-    functionName: "getEncScore",
     args: [attestationId],
   });
 
@@ -73,21 +65,9 @@ export function BadgeDisplay({ attestationId }: BadgeDisplayProps) {
           <DataRow label="Metrics" value={`${metricCount} encrypted (v${metricsVersion})`} />
           <div className="flex items-center justify-between py-3">
             <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Score</span>
-            {disabledDueToMissingPermit ? (
-              <span className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
-                <Lock className="h-3 w-3" /> Encrypted
-              </span>
-            ) : decryptedScore.isLoading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
-            ) : decryptedScore.data != null ? (
-              <span className="font-mono text-sm font-medium text-primary">
-                {(Number(decryptedScore.data) / 100).toFixed(1)}%
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
-                <Lock className="h-3 w-3" /> Encrypted
-              </span>
-            )}
+            <span className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
+              <Lock className="h-3 w-3" /> Encrypted
+            </span>
           </div>
           <DataRow label="Wallet" value={truncatedWallet} mono />
           <DataRow label="Attestation" value={`${attestationId.slice(0, 10)}…${attestationId.slice(-6)}`} mono />
